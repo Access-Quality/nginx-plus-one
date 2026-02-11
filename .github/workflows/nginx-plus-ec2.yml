@@ -34,12 +34,7 @@ jobs:
           echo "TFC_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
           echo "TF_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
           echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
-          ip=$(curl -s https://checkip.amazonaws.com || true)
-          if [[ -n "$ip" ]]; then
-            echo "SSH_CIDR=${ip}/32" >> "$GITHUB_ENV"
-          else
-            echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
-          fi
+          echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
           ssh-keygen -t ed25519 -N "" -f /tmp/gha_ssh_key
 
       - name: Ensure TFC workspace
