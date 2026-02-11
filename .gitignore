@@ -1,0 +1,10 @@
+# Ignore only files at repository root
+/*
+!/.gitignore
+!/README.md
+!/.github/
+!/terraform/
+!/scripts/
+!/.github/**
+!/terraform/**
+!/scripts/**

@@ -1,0 +1,114 @@
+name: nginx-plus-ec2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      NGINX_REPO_CRT: ${{ secrets.NGINX_REPO_CRT }}
+      NGINX_REPO_KEY: ${{ secrets.NGINX_REPO_KEY }}
+      LICENSE_JWT: ${{ secrets.LICENSE_JWT }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      DATA_PLANE_KEY: ${{ secrets.DATA_PLANE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Set dynamic vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          echo "TFC_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
+          echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
+          ip=$(curl -s https://checkip.amazonaws.com || true)
+          if [[ -n "$ip" ]]; then
+            echo "SSH_CIDR=${ip}/32" >> "$GITHUB_ENV"
+          else
+            echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
+          fi
+          ssh-keygen -t ed25519 -N "" -f /tmp/gha_ssh_key
+
+      - name: Ensure TFC workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TFC_TOKEN" \
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+
+          if [[ "$status" == "404" ]]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $TFC_TOKEN" \
+              -H "Content-Type: application/vnd.api+json" \
+              -d "{\"data\":{\"type\":\"workspaces\",\"attributes\":{\"name\":\"$TFC_WORKSPACE\",\"execution-mode\":\"local\"}}}" \
+              "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces"
+          elif [[ "$status" != "200" ]]; then
+            echo "Unexpected status from TFC: $status" >&2
+            exit 1
+          fi
+
+      - name: Terraform init
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          terraform init \
+            -backend-config="organization=$TFC_ORG" \
+            -backend-config="workspaces.name=$TFC_WORKSPACE"
+
+      - name: Terraform apply
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          terraform apply -auto-approve \
+            -var="aws_region=$AWS_REGION" \
+            -var="ssh_cidr=$SSH_CIDR" \
+            -var="name_prefix=$NAME_PREFIX" \
+            -var="ssh_public_key=$(cat /tmp/gha_ssh_key.pub)"
+
+      - name: Get instance IP
+        id: ip
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          cp /tmp/gha_ssh_key ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ steps.ip.outputs.public_ip }}" >> ~/.ssh/known_hosts
+
+      - name: Upload NGINX secrets
+        run: |
+          if [[ -z "$NGINX_REPO_CRT" || -z "$NGINX_REPO_KEY" ]]; then
+            echo "Missing NGINX repo cert/key secrets." >&2
+            exit 1
+          fi
+          printf '%s' "$NGINX_REPO_CRT" > /tmp/nginx-repo.crt
+          printf '%s' "$NGINX_REPO_KEY" > /tmp/nginx-repo.key
+          printf '%s' "$LICENSE_JWT" > /tmp/license.jwt
+          printf '%s' "$LICENSE_KEY" > /tmp/license.key
+          scp /tmp/nginx-repo.crt ubuntu@${{ steps.ip.outputs.public_ip }}:/tmp/nginx-repo.crt
+          scp /tmp/nginx-repo.key ubuntu@${{ steps.ip.outputs.public_ip }}:/tmp/nginx-repo.key
+          scp /tmp/license.jwt ubuntu@${{ steps.ip.outputs.public_ip }}:/tmp/license.jwt
+          scp /tmp/license.key ubuntu@${{ steps.ip.outputs.public_ip }}:/tmp/license.key
+
+      - name: Install NGINX Plus + Agent
+        run: |
+          scp scripts/install-nginx-plus.sh ubuntu@${{ steps.ip.outputs.public_ip }}:/tmp/install-nginx-plus.sh
+          ssh ubuntu@${{ steps.ip.outputs.public_ip }} \
+            "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
