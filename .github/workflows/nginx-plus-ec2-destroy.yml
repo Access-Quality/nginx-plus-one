@@ -30,6 +30,7 @@ jobs:
           set -euo pipefail
           repo_name="${GITHUB_REPOSITORY##*/}"
           echo "TFC_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
+          echo "TF_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
           echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
           ip=$(curl -s https://checkip.amazonaws.com || true)
           if [[ -n "$ip" ]]; then
@@ -62,8 +63,7 @@ jobs:
         working-directory: terraform/nginx-plus-ec2
         run: |
           terraform init \
-            -backend-config="organization=$TFC_ORG" \
-            -backend-config="workspaces.name=$TFC_WORKSPACE"
+            -backend-config="organization=$TFC_ORG"
 
       - name: Terraform destroy
         working-directory: terraform/nginx-plus-ec2
