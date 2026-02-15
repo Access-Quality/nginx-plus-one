@@ -120,8 +120,7 @@ jobs:
         working-directory: terraform/nginx-plus-ec2
         run: |
           terraform init \
-            -backend-config="organization=$TFC_ORG" \
-            -backend-config="workspaces.name=$TF_WORKSPACE"
+            -backend-config="organization=$TFC_ORG"
 
       - name: Terraform plan
         working-directory: terraform/nginx-plus-ec2
