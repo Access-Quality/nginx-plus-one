@@ -6,6 +6,9 @@ on:
 jobs:
   setup-tfc:
     runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
     outputs:
       tf_workspace: ${{ steps.set-outputs.outputs.tf_workspace }}
       name_prefix: ${{ steps.set-outputs.outputs.name_prefix }}
