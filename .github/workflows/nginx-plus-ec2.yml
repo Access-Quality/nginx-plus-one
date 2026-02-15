@@ -4,18 +4,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  terraform:
+  setup-tfc:
     runs-on: ubuntu-latest
-    env:
-      TF_IN_AUTOMATION: "true"
-      TF_INPUT: "false"
-      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-      TFC_ORG: ${{ secrets.TFC_ORG }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
     outputs:
-      public_ip: ${{ steps.ip.outputs.public_ip }}
+      tf_workspace: ${{ steps.set-outputs.outputs.tf_workspace }}
+      name_prefix: ${{ steps.set-outputs.outputs.name_prefix }}
+      ssh_cidr: ${{ steps.set-outputs.outputs.ssh_cidr }}
+      gha_ssh_key_b64: ${{ steps.set-outputs.outputs.gha_ssh_key_b64 }}
+      gha_ssh_pub_b64: ${{ steps.set-outputs.outputs.gha_ssh_pub_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,7 +22,7 @@ jobs:
           terraform_version: 1.7.5
           cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
 
-      - name: Set dynamic vars
+      - name: Set dynamic vars and generate SSH key
         shell: bash
         run: |
           set -euo pipefail
@@ -36,6 +32,7 @@ jobs:
           echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
           echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
           ssh-keygen -t ed25519 -N "" -f /tmp/gha_ssh_key
+          cp /tmp/gha_ssh_key /tmp/gha_ssh_key.private
 
       - name: Ensure TFC workspace
         shell: bash
@@ -56,20 +53,99 @@ jobs:
             exit 1
           fi
 
+      - name: Set job outputs (vars + base64 SSH keys)
+        id: set-outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          tf_workspace="nginx-plus-ec2-$repo_name"
+          name_prefix="nginx-plus-$repo_name"
+          ssh_cidr="0.0.0.0/0"
+          echo "tf_workspace=$tf_workspace" >> "$GITHUB_OUTPUT"
+          echo "name_prefix=$name_prefix" >> "$GITHUB_OUTPUT"
+          echo "ssh_cidr=$ssh_cidr" >> "$GITHUB_OUTPUT"
+          # encode keys to pass between jobs without storing raw private key as an artifact
+          echo "gha_ssh_key_b64=$(base64 -w0 /tmp/gha_ssh_key)" >> "$GITHUB_OUTPUT"
+          echo "gha_ssh_pub_b64=$(base64 -w0 /tmp/gha_ssh_key.pub)" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup temporary keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v shred >/dev/null 2>&1; then
+            shred -u /tmp/gha_ssh_key /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+          else
+            rm -f /tmp/gha_ssh_key /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+          fi
+
+  terraform:
+    needs: setup-tfc
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
+      NAME_PREFIX: ${{ needs.setup-tfc.outputs.name_prefix }}
+      SSH_CIDR: ${{ needs.setup-tfc.outputs.ssh_cidr }}
+    outputs:
+      public_ip: ${{ steps.ip.outputs.public_ip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore SSH key from setup output
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_key_b64 }}" | base64 --decode > /tmp/gha_ssh_key.private
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_pub_b64 }}" | base64 --decode > /tmp/gha_ssh_key.pub
+          chmod 600 /tmp/gha_ssh_key.private
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
       - name: Terraform init
         working-directory: terraform/nginx-plus-ec2
         run: |
           terraform init \
-            -backend-config="organization=$TFC_ORG"
+            -backend-config="organization=$TFC_ORG" \
+            -backend-config="workspace=$TF_WORKSPACE"
 
-      - name: Terraform apply
+      - name: Terraform plan
         working-directory: terraform/nginx-plus-ec2
         run: |
-          terraform apply -auto-approve \
+          terraform plan -out=/tmp/tfplan \
             -var="aws_region=$AWS_REGION" \
             -var="ssh_cidr=$SSH_CIDR" \
             -var="name_prefix=$NAME_PREFIX" \
             -var="ssh_public_key=$(cat /tmp/gha_ssh_key.pub)"
+
+      - name: Save terraform plan (JSON)
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          set -euo pipefail
+          terraform show -json /tmp/tfplan > /tmp/tfplan.json || true
+
+      - name: Upload terraform plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: /tmp/tfplan.json
+          if-no-files-found: warn
+
+      - name: Terraform apply
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          terraform apply -auto-approve /tmp/tfplan
 
       - name: Get instance IP
         id: ip
@@ -77,19 +153,18 @@ jobs:
         run: |
           echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload SSH key artifact
+      - name: Cleanup SSH key files
+        shell: bash
         run: |
-          cp /tmp/gha_ssh_key /tmp/gha_ssh_key.private
-
-      - name: Save SSH key
-        uses: actions/upload-artifact@v4
-        with:
-          name: gha_ssh_key
-          path: /tmp/gha_ssh_key.private
-          if-no-files-found: error
+          set -euo pipefail
+          if command -v shred >/dev/null 2>&1; then
+            shred -u /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+          else
+            rm -f /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+          fi
 
   install:
-    needs: terraform
+    needs: [terraform, setup-tfc]
     runs-on: ubuntu-latest
     env:
       NGINX_REPO_CRT: ${{ secrets.NGINX_REPO_CRT }}
@@ -101,11 +176,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download SSH key
-        uses: actions/download-artifact@v4
-        with:
-          name: gha_ssh_key
-          path: /tmp
+      - name: Restore SSH key from setup output
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_key_b64 }}" | base64 --decode > /tmp/gha_ssh_key.private
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_pub_b64 }}" | base64 --decode > /tmp/gha_ssh_key.pub
+          chmod 600 /tmp/gha_ssh_key.private
 
       - name: Prepare SSH key
         run: |
@@ -148,3 +225,18 @@ jobs:
           scp scripts/install-nginx-plus.sh ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/install-nginx-plus.sh
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
+
+      - name: Cleanup temporary keys and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # remove SSH private key from runner
+          if command -v shred >/dev/null 2>&1; then
+            shred -u ~/.ssh/id_rsa /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+            shred -u /tmp/nginx-repo.crt /tmp/nginx-repo.key /tmp/license.jwt /tmp/license.key || true
+            shred -u /tmp/tfplan /tmp/tfplan.json || true
+          else
+            rm -f ~/.ssh/id_rsa /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
+            rm -f /tmp/nginx-repo.crt /tmp/nginx-repo.key /tmp/license.jwt /tmp/license.key || true
+            rm -f /tmp/tfplan /tmp/tfplan.json || true
+          fi
