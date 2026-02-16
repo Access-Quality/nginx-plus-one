@@ -86,3 +86,49 @@ resource "aws_instance" "nginx_plus" {
     Name = "${var.name_prefix}-nginx-plus"
   })
 }
+
+resource "aws_security_group" "cine" {
+  name        = "${var.name_prefix}-cine"
+  description = "Cine app access"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_cidr]
+  }
+
+  ingress {
+    description     = "Node.js from NGINX Plus"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.nginx_plus.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-cine-sg"
+  })
+}
+
+resource "aws_instance" "cine" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  subnet_id                   = local.subnet_id
+  vpc_security_group_ids      = [aws_security_group.cine.id]
+  key_name                    = aws_key_pair.nginx_plus.key_name
+  associate_public_ip_address = true
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-cine"
+  })
+}

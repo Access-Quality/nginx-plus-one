@@ -98,6 +98,8 @@ jobs:
       SSH_CIDR: ${{ needs.setup-tfc.outputs.ssh_cidr }}
     outputs:
       public_ip: ${{ steps.ip.outputs.public_ip }}
+      cine_private_ip: ${{ steps.ip.outputs.cine_private_ip }}
+      cine_public_ip: ${{ steps.ip.outputs.cine_public_ip }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -154,6 +156,8 @@ jobs:
         working-directory: terraform/nginx-plus-ec2
         run: |
           echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
+          echo "cine_private_ip=$(terraform output -raw cine_private_ip)" >> "$GITHUB_OUTPUT"
+          echo "cine_public_ip=$(terraform output -raw cine_public_ip)" >> "$GITHUB_OUTPUT"
 
       - name: Cleanup SSH key files
         shell: bash
@@ -228,6 +232,16 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
+      - name: Configure NGINX for cine.example.com
+        run: |
+          set -euo pipefail
+          BASTION="${{ needs.terraform.outputs.public_ip }}"
+          CINE_PRIVATE="${{ needs.terraform.outputs.cine_private_ip }}"
+          cp scripts/cine-nginx.conf /tmp/cine-nginx.conf
+          sed -i "s/CINE_IP_PLACEHOLDER/${CINE_PRIVATE}/g" /tmp/cine-nginx.conf
+          scp /tmp/cine-nginx.conf "ubuntu@${BASTION}:/tmp/cine-nginx.conf"
+          ssh "ubuntu@${BASTION}" "sudo mv /tmp/cine-nginx.conf /etc/nginx/conf.d/cine.conf && sudo nginx -t && sudo systemctl reload nginx"
+
       - name: Cleanup temporary keys and secrets
         shell: bash
         run: |
@@ -241,4 +255,75 @@ jobs:
             rm -f ~/.ssh/id_rsa /tmp/gha_ssh_key.private /tmp/gha_ssh_key.pub || true
             rm -f /tmp/nginx-repo.crt /tmp/nginx-repo.key /tmp/license.jwt /tmp/license.key || true
             rm -f /tmp/tfplan /tmp/tfplan.json || true
+          fi
+
+  deploy-cine:
+    needs: [terraform, setup-tfc]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore SSH key from setup output
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_key_b64 }}" | base64 --decode > /tmp/gha_ssh_key.private
+          echo "${{ needs.setup-tfc.outputs.gha_ssh_pub_b64 }}" | base64 --decode > /tmp/gha_ssh_key.pub
+          chmod 600 /tmp/gha_ssh_key.private
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          cp /tmp/gha_ssh_key.private ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ needs.terraform.outputs.cine_public_ip }}" >> ~/.ssh/known_hosts || true
+
+      - name: Wait for SSH
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            if ssh -o BatchMode=yes -o ConnectTimeout=5 \
+              -o StrictHostKeyChecking=accept-new \
+              ubuntu@${{ needs.terraform.outputs.cine_public_ip }} "true"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "SSH not reachable after waiting." >&2
+          exit 1
+
+      - name: Install Node.js 20
+        run: |
+          ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
+            "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+
+      - name: Deploy Cine app
+        run: |
+          set -euo pipefail
+          scp scripts/cine-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
+          scp scripts/cine.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
+          ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
+            "sudo mkdir -p /opt/cine && sudo mv /tmp/app.js /opt/cine/app.js && sudo chown -R ubuntu:ubuntu /opt/cine"
+
+      - name: Start Cine service
+        run: |
+          ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
+            "sudo mv /tmp/cine.service /etc/systemd/system/cine.service && sudo systemctl daemon-reload && sudo systemctl enable cine && sudo systemctl start cine && sudo systemctl status cine"
+
+      - name: Display Cine app URL
+        run: |
+          echo "✅ Cine app deployed successfully!"
+          echo "🌐 Access the app at: http://${{ needs.terraform.outputs.cine_public_ip }}:3000/"
+          echo "🔗 NGINX Plus routing: cine.example.com (via ${{ needs.terraform.outputs.public_ip }})"
+          echo "📍 Cine instance IP: ${{ needs.terraform.outputs.cine_public_ip }}"
+
+      - name: Cleanup SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v shred >/dev/null 2>&1; then
+            shred -u /tmp/gha_ssh_key.private ~/.ssh/id_rsa || true
+          else
+            rm -f /tmp/gha_ssh_key.private ~/.ssh/id_rsa || true
           fi
