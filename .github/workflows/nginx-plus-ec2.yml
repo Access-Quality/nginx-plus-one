@@ -232,7 +232,7 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
-      - name: Configure NGINX for cine.example.com
+      - name: Configure NGINX hostnames for Cine apps
         run: |
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
@@ -331,7 +331,9 @@ jobs:
           echo "✅ Cine app deployed successfully!"
           echo "🌐 Access the app at: http://${{ needs.terraform.outputs.cine_public_ip }}:3000/"
           echo "🌐 Access the TMDB app at: http://${{ needs.terraform.outputs.cine_public_ip }}:3001/"
-          echo "🔗 NGINX Plus routing: cine.example.com (via ${{ needs.terraform.outputs.public_ip }})"
+          echo "🔗 NGINX Plus host routing (via ${{ needs.terraform.outputs.public_ip }}):"
+          echo "   - cine.example.com -> Cine (OMDB)"
+          echo "   - cine-tmdb.example.com -> Cine TMDB"
           echo "📍 Cine instance IP: ${{ needs.terraform.outputs.cine_public_ip }}"
 
       - name: Cleanup SSH key

@@ -68,6 +68,11 @@ The deploy workflow now installs two Node.js apps on the cine instance:
 
 Both are deployed by [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) and managed with systemd services.
 
+NGINX Plus routes them by hostname:
+
+- `cine.example.com` → Cine (OMDb, port 3000)
+- `cine-tmdb.example.com` → Cine TMDB (port 3001)
+
 ## Notes
 
 - The SSH CIDR is set to the GitHub Actions runner public IP at runtime.
