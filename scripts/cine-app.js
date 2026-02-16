@@ -67,124 +67,173 @@ const server = http.createServer((req, res) => {
       <html>
         <head>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Cine - Películas</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background:
+                radial-gradient(circle at top left, #2d2f74 0%, rgba(45,47,116,0) 45%),
+                radial-gradient(circle at bottom right, #6f2dbd 0%, rgba(111,45,189,0) 40%),
+                #0f1220;
               min-height: 100vh;
-              padding: 20px;
+              color: #f5f7ff;
+              padding: 24px;
             }
             .container {
-              max-width: 1200px;
+              max-width: 1240px;
               margin: 0 auto;
             }
+            .hero {
+              background: rgba(255,255,255,0.06);
+              border: 1px solid rgba(255,255,255,0.12);
+              border-radius: 24px;
+              padding: 28px;
+              backdrop-filter: blur(8px);
+              box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+              margin-bottom: 24px;
+            }
             h1 {
-              color: white;
-              text-align: center;
-              margin-bottom: 30px;
-              font-size: 48px;
-              text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+              font-size: clamp(34px, 6vw, 54px);
+              line-height: 1.05;
+              letter-spacing: -0.03em;
+              margin-bottom: 10px;
+              text-shadow: 0 6px 20px rgba(0,0,0,0.35);
+            }
+            .subtitle {
+              color: rgba(245,247,255,0.78);
+              font-size: 16px;
+              font-weight: 500;
             }
             .categories {
               display: flex;
               gap: 10px;
-              margin-bottom: 30px;
+              margin-top: 18px;
               flex-wrap: wrap;
-              justify-content: center;
             }
             .category-btn {
-              padding: 10px 20px;
-              border: none;
-              border-radius: 25px;
+              padding: 10px 18px;
+              border: 1px solid rgba(255,255,255,0.24);
+              border-radius: 999px;
               cursor: pointer;
-              font-size: 14px;
+              font-size: 13px;
               font-weight: 600;
-              transition: all 0.3s ease;
-              background: rgba(255,255,255,0.2);
-              color: white;
-              border: 2px solid white;
+              letter-spacing: 0.01em;
+              transition: all 0.2s ease;
+              background: rgba(255,255,255,0.08);
+              color: #f5f7ff;
             }
             .category-btn:hover {
-              background: white;
-              color: #667eea;
+              border-color: rgba(255,255,255,0.4);
+              background: rgba(255,255,255,0.16);
+              transform: translateY(-1px);
             }
             .category-btn.active {
-              background: white;
-              color: #667eea;
+              background: linear-gradient(135deg, #7f8cff 0%, #a855f7 100%);
+              border-color: transparent;
+              color: #fff;
+              box-shadow: 0 10px 22px rgba(138,95,255,0.35);
             }
             .movies {
               display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-              gap: 20px;
+              grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+              gap: 18px;
             }
             .movie-card {
-              background: white;
-              border-radius: 10px;
+              background: rgba(255,255,255,0.08);
+              border: 1px solid rgba(255,255,255,0.14);
+              border-radius: 16px;
               overflow: hidden;
-              box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-              transition: transform 0.3s ease;
-              cursor: pointer;
+              box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+              transition: transform 0.25s ease, box-shadow 0.25s ease;
             }
             .movie-card:hover {
-              transform: translateY(-5px);
-              box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+              transform: translateY(-4px);
+              box-shadow: 0 20px 40px rgba(0,0,0,0.36);
             }
             .movie-poster {
               width: 100%;
-              height: 300px;
-              background: #ddd;
+              height: 320px;
+              background: linear-gradient(160deg, #1f2546 0%, #343b6a 100%);
               display: flex;
               align-items: center;
               justify-content: center;
-              color: #999;
+              color: rgba(245,247,255,0.72);
               font-size: 12px;
+              font-weight: 600;
             }
             .movie-info {
-              padding: 15px;
+              padding: 14px 14px 16px;
             }
             .movie-title {
               font-weight: 600;
-              margin-bottom: 8px;
+              margin-bottom: 6px;
               font-size: 14px;
-              color: #333;
+              color: #ffffff;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
             }
             .movie-year {
-              color: #666;
+              color: rgba(245,247,255,0.76);
               font-size: 12px;
+              font-weight: 500;
             }
             .loading {
               text-align: center;
-              color: white;
-              padding: 40px;
-              font-size: 18px;
+              color: rgba(245,247,255,0.9);
+              padding: 56px;
+              border: 1px dashed rgba(255,255,255,0.28);
+              border-radius: 14px;
+              font-size: 17px;
+              grid-column: 1 / -1;
             }
             .error {
               text-align: center;
-              color: #ff6b6b;
-              padding: 40px;
-              font-size: 18px;
+              color: #ffd0d0;
+              background: rgba(255, 84, 84, 0.15);
+              border: 1px solid rgba(255, 84, 84, 0.35);
+              border-radius: 14px;
+              padding: 36px;
+              font-size: 16px;
+              grid-column: 1 / -1;
+            }
+            .footer-note {
+              margin-top: 20px;
+              text-align: center;
+              color: rgba(245,247,255,0.65);
+              font-size: 12px;
+              font-weight: 500;
+            }
+            @media (max-width: 680px) {
+              body { padding: 14px; }
+              .hero { padding: 18px; border-radius: 18px; }
+              .movie-poster { height: 290px; }
             }
           </style>
         </head>
         <body>
           <div class="container">
-            <h1>🎬 Cine</h1>
-            
-            <div class="categories">
-              <button class="category-btn active" onclick="loadMovies('action')">Acción</button>
-              <button class="category-btn" onclick="loadMovies('drama')">Drama</button>
-              <button class="category-btn" onclick="loadMovies('comedy')">Comedia</button>
-              <button class="category-btn" onclick="loadMovies('thriller')">Thriller</button>
-              <button class="category-btn" onclick="loadMovies('scifi')">Ciencia Ficción</button>
-              <button class="category-btn" onclick="loadMovies('horror')">Terror</button>
+            <div class="hero">
+              <h1>🎬 Cine</h1>
+              <p class="subtitle">Explora recomendaciones por género con una experiencia más visual y limpia.</p>
+
+              <div class="categories">
+                <button class="category-btn active" data-category="action" onclick="loadMovies('action')">Acción</button>
+                <button class="category-btn" data-category="drama" onclick="loadMovies('drama')">Drama</button>
+                <button class="category-btn" data-category="comedy" onclick="loadMovies('comedy')">Comedia</button>
+                <button class="category-btn" data-category="thriller" onclick="loadMovies('thriller')">Thriller</button>
+                <button class="category-btn" data-category="scifi" onclick="loadMovies('scifi')">Ciencia Ficción</button>
+                <button class="category-btn" data-category="horror" onclick="loadMovies('horror')">Terror</button>
+              </div>
             </div>
 
             <div id="content" class="movies"></div>
+            <div class="footer-note">Fuente de datos: OMDb API</div>
           </div>
 
           <script>
@@ -192,11 +241,13 @@ const server = http.createServer((req, res) => {
               const content = document.getElementById('content');
               content.innerHTML = '<div class="loading">Cargando películas...</div>';
 
-              // Update active button
               document.querySelectorAll('.category-btn').forEach(btn => {
                 btn.classList.remove('active');
               });
-              event.target.classList.add('active');
+              const activeButton = document.querySelector('.category-btn[data-category="' + category + '"]');
+              if (activeButton) {
+                activeButton.classList.add('active');
+              }
 
               try {
                 const response = await fetch('/api/movies?category=' + category);
