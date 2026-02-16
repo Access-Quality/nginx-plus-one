@@ -257,15 +257,60 @@ jobs:
             rm -f /tmp/tfplan /tmp/tfplan.json || true
           fi
 
+  build-cine-omdb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate OMDB app syntax
+        run: |
+          node --check scripts/cine-app.js
+
+      - name: Upload OMDB app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-omdb-bundle
+          path: |
+            scripts/cine-app.js
+            scripts/cine.service
+
+  build-cine-tmdb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate TMDB app syntax
+        run: |
+          node --check scripts/cine-tmdb-app.js
+
+      - name: Upload TMDB app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-tmdb-bundle
+          path: |
+            scripts/cine-tmdb-app.js
+            scripts/cine-tmdb.service
+
   deploy-cine:
-    needs: [terraform, setup-tfc, install]
+    needs: [terraform, setup-tfc, install, build-cine-omdb, build-cine-tmdb]
     runs-on: ubuntu-latest
     env:
       OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Download OMDB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-omdb-bundle
+          path: /tmp/cine-omdb
+
+      - name: Download TMDB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-tmdb-bundle
+          path: /tmp/cine-tmdb
 
       - name: Restore SSH key from setup output
         shell: bash
@@ -304,10 +349,10 @@ jobs:
       - name: Deploy Cine app
         run: |
           set -euo pipefail
-          scp scripts/cine-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
-          scp scripts/cine.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
-          scp scripts/cine-tmdb-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb-app.js
-          scp scripts/cine-tmdb.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb.service
+          scp /tmp/cine-omdb/scripts/cine-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
+          scp /tmp/cine-omdb/scripts/cine.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
+          scp /tmp/cine-tmdb/scripts/cine-tmdb-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb-app.js
+          scp /tmp/cine-tmdb/scripts/cine-tmdb.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb.service
           ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
             "sudo mkdir -p /opt/cine /etc/cine /opt/cine-tmdb /etc/cine-tmdb && sudo mv /tmp/app.js /opt/cine/app.js && sudo mv /tmp/cine-tmdb-app.js /opt/cine-tmdb/app.js && sudo chown -R ubuntu:ubuntu /opt/cine /opt/cine-tmdb && echo \"OMDB_API_KEY=$OMDB_API_KEY\" | sudo tee /etc/cine/cine.env >/dev/null && echo \"TMDB_API_KEY=$TMDB_API_KEY\" | sudo tee /etc/cine-tmdb/cine-tmdb.env >/dev/null && sudo chmod 600 /etc/cine/cine.env /etc/cine-tmdb/cine-tmdb.env"
 

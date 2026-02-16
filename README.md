@@ -68,6 +68,8 @@ The deploy workflow now installs two Node.js apps on the cine instance:
 
 Both are deployed by [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) and managed with systemd services.
 
+The workflow builds each app in a separate job (`build-cine-omdb` and `build-cine-tmdb`) and then deploys both artifacts to the same cine VM in `deploy-cine`.
+
 NGINX Plus routes them by hostname:
 
 - `cine.example.com` → Cine (OMDb, port 3000)
