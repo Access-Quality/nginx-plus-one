@@ -1,41 +1,43 @@
-const http = require('http');
-const https = require('https');
-const url = require('url');
+const http = require("http");
+const https = require("https");
+const url = require("url");
 
 const PORT = process.env.PORT || 3000;
-const OMDB_API_KEY = process.env.OMDB_API_KEY || 'demo';
+const OMDB_API_KEY = process.env.OMDB_API_KEY || "demo";
 
 // Movie categories with OMDB search queries
 const categories = {
-  action: 'action',
-  drama: 'drama',
-  comedy: 'comedy',
-  thriller: 'thriller',
-  scifi: 'science fiction',
-  horror: 'horror'
+  action: "action",
+  drama: "drama",
+  comedy: "comedy",
+  thriller: "thriller",
+  scifi: "science fiction",
+  horror: "horror",
 };
 
 function fetchMovies(searchTerm, callback) {
   const query = `https://www.omdbapi.com/?s=${encodeURIComponent(searchTerm)}&type=movie&apikey=${OMDB_API_KEY}`;
-  
-  https.get(query, (res) => {
-    let data = '';
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      try {
-        const result = JSON.parse(data);
-        if (result.Response === 'True') {
-          callback(null, result.Search || []);
-        } else {
+
+  https
+    .get(query, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.Response === "True") {
+            callback(null, result.Search || []);
+          } else {
+            callback(null, []);
+          }
+        } catch (e) {
           callback(null, []);
         }
-      } catch (e) {
-        callback(null, []);
-      }
+      });
+    })
+    .on("error", (err) => {
+      callback(null, []);
     });
-  }).on('error', (err) => {
-    callback(null, []);
-  });
 }
 
 const server = http.createServer((req, res) => {
@@ -43,19 +45,19 @@ const server = http.createServer((req, res) => {
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
 
-  if (pathname === '/api/movies') {
-    const category = query.category || 'action';
-    const searchTerm = categories[category] || 'action';
-    
+  if (pathname === "/api/movies") {
+    const category = query.category || "action";
+    const searchTerm = categories[category] || "action";
+
     fetchMovies(searchTerm, (err, movies) => {
       if (err) {
         res.writeHead(500);
-        res.end(JSON.stringify({ error: 'Error fetching movies' }));
+        res.end(JSON.stringify({ error: "Error fetching movies" }));
         return;
       }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(movies));
     });
   } else {
@@ -205,17 +207,17 @@ const server = http.createServer((req, res) => {
                   return;
                 }
 
-                const html = movies.map(movie => `
-                  <div class="movie-card">
-                    <div class="movie-poster" style="background-image: url('${movie.Poster}'); background-size: cover; background-position: center;">
-                      ${movie.Poster === 'N/A' ? 'No hay imagen' : ''}
+                const html = movies.map(movie => {
+                  return \`<div class="movie-card">
+                    <div class="movie-poster" style="background-image: url('\${movie.Poster}'); background-size: cover; background-position: center;">
+                      \${movie.Poster === 'N/A' ? 'No hay imagen' : ''}
                     </div>
                     <div class="movie-info">
-                      <div class="movie-title">${movie.Title}</div>
-                      <div class="movie-year">${movie.Year}</div>
+                      <div class="movie-title">\${movie.Title}</div>
+                      <div class="movie-year">\${movie.Year}</div>
                     </div>
-                  </div>
-                `).join('');
+                  </div>\`;
+                }).join('');
 
                 content.innerHTML = html;
               } catch (error) {
@@ -232,7 +234,9 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Cine app running on port ${PORT}`);
-  console.log(`OMDB API Key: ${OMDB_API_KEY === 'demo' ? 'Using demo key' : 'Configured'}`);
+  console.log(
+    `OMDB API Key: ${OMDB_API_KEY === "demo" ? "Using demo key" : "Configured"}`,
+  );
 });
