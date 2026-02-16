@@ -260,6 +260,8 @@ jobs:
   deploy-cine:
     needs: [terraform, setup-tfc, install]
     runs-on: ubuntu-latest
+    env:
+      OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -304,7 +306,7 @@ jobs:
           scp scripts/cine-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
           scp scripts/cine.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
           ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
-            "sudo mkdir -p /opt/cine && sudo mv /tmp/app.js /opt/cine/app.js && sudo chown -R ubuntu:ubuntu /opt/cine"
+            "sudo mkdir -p /opt/cine /etc/cine && sudo mv /tmp/app.js /opt/cine/app.js && sudo chown -R ubuntu:ubuntu /opt/cine && echo 'OMDB_API_KEY=$OMDB_API_KEY' | sudo tee /etc/cine/cine.env >/dev/null && sudo chmod 600 /etc/cine/cine.env"
 
       - name: Start Cine service
         run: |
