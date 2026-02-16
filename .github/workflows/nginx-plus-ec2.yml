@@ -258,7 +258,7 @@ jobs:
           fi
 
   deploy-cine:
-    needs: [terraform, setup-tfc]
+    needs: [terraform, setup-tfc, install]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
