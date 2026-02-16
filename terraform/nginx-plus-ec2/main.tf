@@ -108,6 +108,14 @@ resource "aws_security_group" "cine" {
     security_groups = [aws_security_group.nginx_plus.id]
   }
 
+  ingress {
+    description     = "Node.js TMDB from NGINX Plus"
+    from_port       = 3001
+    to_port         = 3001
+    protocol        = "tcp"
+    security_groups = [aws_security_group.nginx_plus.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
