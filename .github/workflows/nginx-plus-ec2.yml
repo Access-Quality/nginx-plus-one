@@ -313,6 +313,11 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
             "sudo mv /tmp/cine.service /etc/systemd/system/cine.service && sudo systemctl daemon-reload && sudo systemctl enable cine && sudo systemctl start cine && sudo systemctl status cine"
 
+      - name: Verify Cine app is running
+        run: |
+          ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
+            "echo '=== Service Status ===' && sudo systemctl status cine && echo '' && echo '=== Port Listening ===' && sudo netstat -tlnp | grep 3000 || echo 'Port 3000 not listening!' && echo '' && echo '=== Recent Logs ===' && sudo journalctl -u cine -n 20 --no-pager && echo '' && echo '=== Node.js version ===' && node --version"
+
       - name: Display Cine app URL
         run: |
           echo "✅ Cine app deployed successfully!"
