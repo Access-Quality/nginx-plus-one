@@ -346,13 +346,32 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
             "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
 
+      - name: Resolve app artifact paths
+        run: |
+          set -euo pipefail
+          OMDB_APP_PATH="$(find /tmp/cine-omdb -type f -name 'cine-app.js' | head -n1)"
+          OMDB_SERVICE_PATH="$(find /tmp/cine-omdb -type f -name 'cine.service' | head -n1)"
+          TMDB_APP_PATH="$(find /tmp/cine-tmdb -type f -name 'cine-tmdb-app.js' | head -n1)"
+          TMDB_SERVICE_PATH="$(find /tmp/cine-tmdb -type f -name 'cine-tmdb.service' | head -n1)"
+
+          if [[ -z "${OMDB_APP_PATH}" || -z "${OMDB_SERVICE_PATH}" || -z "${TMDB_APP_PATH}" || -z "${TMDB_SERVICE_PATH}" ]]; then
+            echo "Artifact files not found after download" >&2
+            find /tmp/cine-omdb /tmp/cine-tmdb -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+
+          echo "OMDB_APP_PATH=${OMDB_APP_PATH}" >> "$GITHUB_ENV"
+          echo "OMDB_SERVICE_PATH=${OMDB_SERVICE_PATH}" >> "$GITHUB_ENV"
+          echo "TMDB_APP_PATH=${TMDB_APP_PATH}" >> "$GITHUB_ENV"
+          echo "TMDB_SERVICE_PATH=${TMDB_SERVICE_PATH}" >> "$GITHUB_ENV"
+
       - name: Deploy Cine app
         run: |
           set -euo pipefail
-          scp /tmp/cine-omdb/scripts/cine-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
-          scp /tmp/cine-omdb/scripts/cine.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
-          scp /tmp/cine-tmdb/scripts/cine-tmdb-app.js ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb-app.js
-          scp /tmp/cine-tmdb/scripts/cine-tmdb.service ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb.service
+          scp "$OMDB_APP_PATH" ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/app.js
+          scp "$OMDB_SERVICE_PATH" ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine.service
+          scp "$TMDB_APP_PATH" ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb-app.js
+          scp "$TMDB_SERVICE_PATH" ubuntu@${{ needs.terraform.outputs.cine_public_ip }}:/tmp/cine-tmdb.service
           ssh ubuntu@${{ needs.terraform.outputs.cine_public_ip }} \
             "sudo mkdir -p /opt/cine /etc/cine /opt/cine-tmdb /etc/cine-tmdb && sudo mv /tmp/app.js /opt/cine/app.js && sudo mv /tmp/cine-tmdb-app.js /opt/cine-tmdb/app.js && sudo chown -R ubuntu:ubuntu /opt/cine /opt/cine-tmdb && echo \"OMDB_API_KEY=$OMDB_API_KEY\" | sudo tee /etc/cine/cine.env >/dev/null && echo \"TMDB_API_KEY=$TMDB_API_KEY\" | sudo tee /etc/cine-tmdb/cine-tmdb.env >/dev/null && sudo chmod 600 /etc/cine/cine.env /etc/cine-tmdb/cine-tmdb.env"
 
