@@ -205,17 +205,17 @@ const server = http.createServer((req, res) => {
                   return;
                 }
 
-                const html = movies.map(movie => \`
+                const html = movies.map(movie => `
                   <div class="movie-card">
-                    <div class="movie-poster" style="background-image: url('\${movie.Poster}'); background-size: cover; background-position: center;">
-                      \${movie.Poster === 'N/A' ? 'No hay imagen' : ''}
+                    <div class="movie-poster" style="background-image: url('${movie.Poster}'); background-size: cover; background-position: center;">
+                      ${movie.Poster === 'N/A' ? 'No hay imagen' : ''}
                     </div>
                     <div class="movie-info">
-                      <div class="movie-title">\${movie.Title}</div>
-                      <div class="movie-year">\${movie.Year}</div>
+                      <div class="movie-title">${movie.Title}</div>
+                      <div class="movie-year">${movie.Year}</div>
                     </div>
                   </div>
-                \`).join('');
+                `).join('');
 
                 content.innerHTML = html;
               } catch (error) {
@@ -233,6 +233,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(\`Cine app running on port \${PORT}\`);
-  console.log(\`OMDB API Key: \${OMDB_API_KEY === 'demo' ? 'Using demo key' : 'Configured'}\`);
+  console.log(`Cine app running on port ${PORT}`);
+  console.log(`OMDB API Key: ${OMDB_API_KEY === 'demo' ? 'Using demo key' : 'Configured'}`);
 });
