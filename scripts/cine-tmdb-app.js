@@ -89,27 +89,39 @@ const server = http.createServer((req, res) => {
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: linear-gradient(160deg, #0b1020 0%, #151f3b 55%, #2b1858 100%);
-            color: #eef2ff;
+            background:
+              radial-gradient(circle at top right, rgba(255, 187, 119, 0.35) 0%, rgba(255, 187, 119, 0) 45%),
+              radial-gradient(circle at bottom left, rgba(255, 108, 92, 0.3) 0%, rgba(255, 108, 92, 0) 42%),
+              #f6f1e8;
+            color: #2f2a25;
             min-height: 100vh;
-            padding: 20px;
+            padding: 22px;
           }
           .container { max-width: 1240px; margin: 0 auto; }
           .header {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 20px;
-            padding: 24px;
-            margin-bottom: 20px;
-            backdrop-filter: blur(8px);
+            background: linear-gradient(145deg, #fff8ee 0%, #ffeeda 100%);
+            border: 1px solid #f0d8be;
+            border-radius: 18px;
+            padding: 24px 24px 20px;
+            margin-bottom: 22px;
+            box-shadow: 0 16px 36px rgba(89, 58, 33, 0.16);
           }
-          h1 { font-size: clamp(30px, 5vw, 52px); margin-bottom: 8px; letter-spacing: -0.02em; }
-          .subtitle { color: rgba(238, 242, 255, 0.78); font-size: 15px; margin-bottom: 14px; }
+          h1 {
+            font-size: clamp(30px, 5vw, 52px);
+            margin-bottom: 8px;
+            letter-spacing: -0.03em;
+            color: #3d2b1f;
+          }
+          .subtitle {
+            color: #755741;
+            font-size: 15px;
+            margin-bottom: 14px;
+          }
           .categories { display: flex; flex-wrap: wrap; gap: 10px; }
           .category-btn {
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            background: rgba(255, 255, 255, 0.08);
-            color: #eef2ff;
+            border: 1px solid #dfc4a8;
+            background: #fff7eb;
+            color: #5f4432;
             padding: 10px 16px;
             border-radius: 999px;
             font-weight: 600;
@@ -117,39 +129,45 @@ const server = http.createServer((req, res) => {
             transition: 0.2s ease;
           }
           .category-btn.active {
-            background: linear-gradient(135deg, #4f8cff 0%, #a855f7 100%);
-            border-color: transparent;
+            background: linear-gradient(135deg, #c94f3d 0%, #e27b45 100%);
+            border-color: #c94f3d;
+            color: #fff8ef;
+            box-shadow: 0 8px 18px rgba(201, 79, 61, 0.32);
           }
-          .category-btn:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.14); }
+          .category-btn:hover {
+            transform: translateY(-1px);
+            border-color: #c9a786;
+            background: #fff2e2;
+          }
           .movies {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 16px;
+            gap: 18px;
           }
           .movie-card {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: #fffdfa;
+            border: 1px solid #ecd7c0;
             border-radius: 14px;
             overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.32);
+            box-shadow: 0 10px 24px rgba(80, 52, 30, 0.16);
             transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
             cursor: pointer;
           }
           .movie-card:hover {
             transform: translateY(-3px);
-            border-color: rgba(255, 255, 255, 0.32);
-            box-shadow: 0 18px 35px rgba(0, 0, 0, 0.42);
+            border-color: #d9b493;
+            box-shadow: 0 16px 32px rgba(80, 52, 30, 0.24);
           }
           .poster {
             width: 100%;
             height: 330px;
-            background: #1f2a44;
+            background: #d9c4af;
             position: relative;
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: rgba(238, 242, 255, 0.75);
+            color: #6b5543;
             font-size: 13px;
           }
           .poster img {
@@ -167,14 +185,22 @@ const server = http.createServer((req, res) => {
             padding: 10px;
             text-align: center;
             font-weight: 600;
-            color: rgba(238, 242, 255, 0.8);
+            color: #6b5543;
           }
           .poster.no-image .poster-fallback {
             display: flex;
           }
           .info { padding: 12px 12px 14px; }
-          .title { font-size: 14px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .meta { color: rgba(238, 242, 255, 0.75); font-size: 12px; display: flex; justify-content: space-between; gap: 10px; }
+          .title {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #3b2c21;
+          }
+          .meta { color: #7a6250; font-size: 12px; display: flex; justify-content: space-between; gap: 10px; }
           .badges {
             margin-top: 8px;
             display: flex;
@@ -183,15 +209,15 @@ const server = http.createServer((req, res) => {
           }
           .badge {
             font-size: 11px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid #e6c9aa;
+            background: #fff4e5;
             border-radius: 999px;
             padding: 3px 8px;
-            color: rgba(238, 242, 255, 0.86);
+            color: #7b5e48;
           }
           .overview {
             margin-top: 10px;
-            color: rgba(238, 242, 255, 0.82);
+            color: #6f5a49;
             font-size: 12px;
             line-height: 1.45;
             display: -webkit-box;
@@ -203,20 +229,21 @@ const server = http.createServer((req, res) => {
           .state {
             grid-column: 1 / -1;
             text-align: center;
-            border: 1px dashed rgba(255, 255, 255, 0.28);
+            border: 1px dashed #d2b89d;
+            background: #fff6ea;
             border-radius: 14px;
             padding: 34px;
-            color: rgba(238, 242, 255, 0.9);
+            color: #6a503d;
           }
           .warning {
             margin-top: 12px;
             display: inline-block;
-            background: rgba(255, 132, 71, 0.2);
-            border: 1px solid rgba(255, 132, 71, 0.45);
+            background: #ffe3d2;
+            border: 1px solid #f1b08c;
             border-radius: 999px;
             padding: 6px 12px;
             font-size: 12px;
-            color: #ffd8c2;
+            color: #8f4a26;
           }
           .modal {
             position: fixed;
@@ -226,7 +253,7 @@ const server = http.createServer((req, res) => {
             justify-content: center;
             z-index: 60;
             padding: 18px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(40, 21, 8, 0.64);
             backdrop-filter: blur(4px);
           }
           .modal.open {
@@ -236,16 +263,16 @@ const server = http.createServer((req, res) => {
             width: min(900px, 100%);
             max-height: 90vh;
             overflow: auto;
-            background: linear-gradient(160deg, rgba(31,42,68,0.95) 0%, rgba(24, 32, 58, 0.95) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: linear-gradient(160deg, #fff8ee 0%, #ffedd7 100%);
+            border: 1px solid #e9caab;
             border-radius: 16px;
-            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 30px 70px rgba(64, 35, 17, 0.4);
             display: grid;
             grid-template-columns: minmax(220px, 280px) 1fr;
           }
           .modal-poster {
             min-height: 100%;
-            background: #1f2a44;
+            background: #d9c1a6;
           }
           .modal-poster img {
             width: 100%;
@@ -266,22 +293,23 @@ const server = http.createServer((req, res) => {
             font-size: 28px;
             line-height: 1.15;
             margin-bottom: 6px;
+            color: #3d2b1f;
           }
           .modal-subtitle {
-            color: rgba(238, 242, 255, 0.72);
+            color: #6e5443;
             font-size: 14px;
           }
           .close-btn {
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            background: rgba(255, 255, 255, 0.08);
-            color: #eef2ff;
+            border: 1px solid #d6b392;
+            background: #fff5e8;
+            color: #6b4833;
             width: 34px;
             height: 34px;
             border-radius: 10px;
             font-size: 18px;
             cursor: pointer;
           }
-          .close-btn:hover { background: rgba(255, 255, 255, 0.16); }
+          .close-btn:hover { background: #ffe9d2; }
           .detail-grid {
             margin-top: 14px;
             display: grid;
@@ -289,23 +317,24 @@ const server = http.createServer((req, res) => {
             gap: 10px;
           }
           .detail-item {
-            background: rgba(255, 255, 255, 0.07);
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: #fff4e4;
+            border: 1px solid #e4c5a5;
             border-radius: 10px;
             padding: 10px;
           }
           .detail-item span {
             display: block;
             font-size: 11px;
-            color: rgba(238, 242, 255, 0.65);
+            color: #7c624f;
             margin-bottom: 4px;
           }
           .detail-item strong {
             font-size: 13px;
+            color: #4a3428;
           }
           .modal-overview {
             margin-top: 14px;
-            color: rgba(238, 242, 255, 0.9);
+            color: #5f4738;
             line-height: 1.6;
             font-size: 14px;
           }
@@ -314,14 +343,14 @@ const server = http.createServer((req, res) => {
             display: inline-block;
             border-radius: 999px;
             padding: 10px 14px;
-            color: #eef2ff;
+            color: #fff7ef;
             text-decoration: none;
             font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid #c74f3e;
+            background: linear-gradient(135deg, #c74f3e 0%, #dd7643 100%);
           }
           .tmdb-link:hover {
-            background: rgba(255, 255, 255, 0.16);
+            filter: brightness(1.06);
           }
           @media (max-width: 760px) {
             .modal-card { grid-template-columns: 1fr; }
@@ -334,7 +363,7 @@ const server = http.createServer((req, res) => {
         <div class="container">
           <div class="header">
             <h1>🍿 Cine TMDB</h1>
-            <p class="subtitle">Descubre películas populares por género desde The Movie Database.</p>
+            <p class="subtitle">Explora cartelera popular con estilo editorial y toca un póster para ver ficha completa.</p>
             <div class="categories">
               <button class="category-btn active" data-category="action" onclick="loadMovies('action')">Acción</button>
               <button class="category-btn" data-category="drama" onclick="loadMovies('drama')">Drama</button>
