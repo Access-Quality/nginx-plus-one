@@ -132,13 +132,33 @@ const server = http.createServer((req, res) => {
             width: 100%;
             height: 330px;
             background: #1f2a44;
+            position: relative;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             color: rgba(238, 242, 255, 0.75);
             font-size: 13px;
-            background-size: cover;
-            background-position: center;
+          }
+          .poster img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .poster-fallback {
+            display: none;
+            position: absolute;
+            inset: 0;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            text-align: center;
+            font-weight: 600;
+            color: rgba(238, 242, 255, 0.8);
+          }
+          .poster.no-image .poster-fallback {
+            display: flex;
           }
           .info { padding: 12px 12px 14px; }
           .title { font-size: 14px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -213,9 +233,15 @@ const server = http.createServer((req, res) => {
               }
 
               const html = movies.map((movie) => {
+                const posterClass = movie.poster ? 'poster' : 'poster no-image';
+                const posterImage = movie.poster
+                  ? '<img src="' + movie.poster + '" alt="Póster de ' + movie.title.replace(/"/g, '&quot;') + '" loading="lazy" referrerpolicy="no-referrer">'
+                  : '';
+
                 return '<article class="movie-card">'
-                  + '<div class="poster" style="background-image:url(\'' + (movie.poster || '') + '\')">'
-                  + (movie.poster ? '' : 'Sin póster')
+                  + '<div class="' + posterClass + '">'
+                  + posterImage
+                  + '<span class="poster-fallback">Sin póster</span>'
                   + '</div>'
                   + '<div class="info">'
                   + '<div class="title">' + movie.title + '</div>'
@@ -226,6 +252,15 @@ const server = http.createServer((req, res) => {
               }).join('');
 
               content.innerHTML = html;
+              document.querySelectorAll('.poster img').forEach((img) => {
+                img.addEventListener('error', () => {
+                  const posterContainer = img.closest('.poster');
+                  if (posterContainer) {
+                    posterContainer.classList.add('no-image');
+                  }
+                  img.remove();
+                });
+              });
             } catch (error) {
               content.innerHTML = '<div class="state">Error al consultar TMDB.</div>';
             }
