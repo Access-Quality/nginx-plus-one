@@ -23,6 +23,7 @@ Configure these secrets in your repository:
 - `LICENSE_JWT`
 - `LICENSE_KEY`
 - `DATA_PLANE_KEY`
+- `TMDB_API_KEY`
 
 ### Secret contents
 
@@ -31,6 +32,7 @@ Configure these secrets in your repository:
 - `LICENSE_JWT`: contents of your NGINX Plus license `.jwt` file.
 - `LICENSE_KEY`: contents of your NGINX Plus license `.key` file.
 - `DATA_PLANE_KEY`: NGINX One data plane key.
+- `TMDB_API_KEY`: API key de The Movie Database (TMDB).
 
 ## Workflows
 
@@ -56,6 +58,15 @@ Installation and registration steps are in [scripts/install-nginx-plus.sh](scrip
 - Configures license files at `/etc/nginx/license.jwt` and `/etc/nginx/license.key`.
 - Enables NGINX Plus API on `127.0.0.1:8080`.
 - Installs and starts the NGINX Agent with `DATA_PLANE_KEY`.
+
+## Cine apps
+
+The deploy workflow now installs two Node.js apps on the cine instance:
+
+- `Cine` (OMDb) on port `3000`.
+- `Cine TMDB` (The Movie Database) on port `3001`.
+
+Both are deployed by [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) and managed with systemd services.
 
 ## Notes
 

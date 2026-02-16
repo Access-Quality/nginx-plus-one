@@ -1,0 +1,16 @@
+[Unit]
+Description=Cine TMDB Node.js App
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/cine-tmdb
+ExecStart=/usr/bin/node /opt/cine-tmdb/app.js
+Restart=on-failure
+RestartSec=10
+Environment="PORT=3001"
+EnvironmentFile=-/etc/cine-tmdb/cine-tmdb.env
+
+[Install]
+WantedBy=multi-user.target
