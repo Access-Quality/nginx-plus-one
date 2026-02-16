@@ -32,12 +32,17 @@ function fetchMoviesByGenre(genreId, callback) {
           const movies = (result.results || []).map((movie) => ({
             id: movie.id,
             title: movie.title,
+            originalTitle: movie.original_title || movie.title,
             year: movie.release_date ? movie.release_date.slice(0, 4) : "N/D",
+            releaseDate: movie.release_date || "N/D",
             overview: movie.overview || "Sin descripción disponible",
             poster: movie.poster_path
               ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
               : null,
             rating: typeof movie.vote_average === "number" ? movie.vote_average.toFixed(1) : "-",
+            voteCount: typeof movie.vote_count === "number" ? movie.vote_count : 0,
+            popularity: typeof movie.popularity === "number" ? movie.popularity.toFixed(1) : "-",
+            language: movie.original_language ? movie.original_language.toUpperCase() : "N/D",
           }));
           callback(null, movies);
         } catch (e) {
@@ -127,6 +132,13 @@ const server = http.createServer((req, res) => {
             border-radius: 14px;
             overflow: hidden;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.32);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+          }
+          .movie-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.32);
+            box-shadow: 0 18px 35px rgba(0, 0, 0, 0.42);
           }
           .poster {
             width: 100%;
@@ -163,6 +175,20 @@ const server = http.createServer((req, res) => {
           .info { padding: 12px 12px 14px; }
           .title { font-size: 14px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .meta { color: rgba(238, 242, 255, 0.75); font-size: 12px; display: flex; justify-content: space-between; gap: 10px; }
+          .badges {
+            margin-top: 8px;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+          }
+          .badge {
+            font-size: 11px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            padding: 3px 8px;
+            color: rgba(238, 242, 255, 0.86);
+          }
           .overview {
             margin-top: 10px;
             color: rgba(238, 242, 255, 0.82);
@@ -192,6 +218,116 @@ const server = http.createServer((req, res) => {
             font-size: 12px;
             color: #ffd8c2;
           }
+          .modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 60;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+          }
+          .modal.open {
+            display: flex;
+          }
+          .modal-card {
+            width: min(900px, 100%);
+            max-height: 90vh;
+            overflow: auto;
+            background: linear-gradient(160deg, rgba(31,42,68,0.95) 0%, rgba(24, 32, 58, 0.95) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+            display: grid;
+            grid-template-columns: minmax(220px, 280px) 1fr;
+          }
+          .modal-poster {
+            min-height: 100%;
+            background: #1f2a44;
+          }
+          .modal-poster img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .modal-body {
+            padding: 20px;
+          }
+          .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 14px;
+          }
+          .modal-title {
+            font-size: 28px;
+            line-height: 1.15;
+            margin-bottom: 6px;
+          }
+          .modal-subtitle {
+            color: rgba(238, 242, 255, 0.72);
+            font-size: 14px;
+          }
+          .close-btn {
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background: rgba(255, 255, 255, 0.08);
+            color: #eef2ff;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+          }
+          .close-btn:hover { background: rgba(255, 255, 255, 0.16); }
+          .detail-grid {
+            margin-top: 14px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+          }
+          .detail-item {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 10px;
+            padding: 10px;
+          }
+          .detail-item span {
+            display: block;
+            font-size: 11px;
+            color: rgba(238, 242, 255, 0.65);
+            margin-bottom: 4px;
+          }
+          .detail-item strong {
+            font-size: 13px;
+          }
+          .modal-overview {
+            margin-top: 14px;
+            color: rgba(238, 242, 255, 0.9);
+            line-height: 1.6;
+            font-size: 14px;
+          }
+          .tmdb-link {
+            margin-top: 16px;
+            display: inline-block;
+            border-radius: 999px;
+            padding: 10px 14px;
+            color: #eef2ff;
+            text-decoration: none;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.08);
+          }
+          .tmdb-link:hover {
+            background: rgba(255, 255, 255, 0.16);
+          }
+          @media (max-width: 760px) {
+            .modal-card { grid-template-columns: 1fr; }
+            .modal-poster { height: 360px; }
+            .detail-grid { grid-template-columns: 1fr; }
+          }
         </style>
       </head>
       <body>
@@ -213,7 +349,73 @@ const server = http.createServer((req, res) => {
           <div id="content" class="movies"></div>
         </div>
 
+        <div id="movieModal" class="modal" onclick="closeMovieDetails(event)">
+          <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-poster" id="modalPoster"></div>
+            <div class="modal-body">
+              <div class="modal-head">
+                <div>
+                  <h2 class="modal-title" id="modalTitle">Película</h2>
+                  <div class="modal-subtitle" id="modalSubtitle"></div>
+                </div>
+                <button class="close-btn" onclick="closeMovieDetails()" aria-label="Cerrar">×</button>
+              </div>
+              <div class="detail-grid">
+                <div class="detail-item"><span>Calificación</span><strong id="modalRating">-</strong></div>
+                <div class="detail-item"><span>Votos</span><strong id="modalVotes">-</strong></div>
+                <div class="detail-item"><span>Popularidad</span><strong id="modalPopularity">-</strong></div>
+                <div class="detail-item"><span>Idioma original</span><strong id="modalLanguage">-</strong></div>
+              </div>
+              <p class="modal-overview" id="modalOverview"></p>
+              <a class="tmdb-link" id="modalTmdbLink" href="#" target="_blank" rel="noopener noreferrer">Ver en TMDB</a>
+            </div>
+          </div>
+        </div>
+
         <script>
+          let currentMovies = [];
+
+          function escapeHtml(value) {
+            return String(value || '')
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+          }
+
+          function closeMovieDetails(event) {
+            if (event && event.target && event.target.className && String(event.target.className).indexOf('modal') === -1) {
+              return;
+            }
+            const modal = document.getElementById('movieModal');
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
+          }
+
+          function openMovieDetails(index) {
+            const movie = currentMovies[index];
+            if (!movie) return;
+
+            const posterHtml = movie.poster
+              ? '<img src="' + movie.poster + '" alt="Póster de ' + escapeHtml(movie.title) + '" referrerpolicy="no-referrer">'
+              : '<div class="poster-fallback" style="display:flex;position:static;height:100%;">Sin póster</div>';
+
+            document.getElementById('modalPoster').innerHTML = posterHtml;
+            document.getElementById('modalTitle').textContent = movie.title;
+            document.getElementById('modalSubtitle').textContent = movie.originalTitle + ' • ' + movie.releaseDate;
+            document.getElementById('modalRating').textContent = '⭐ ' + movie.rating;
+            document.getElementById('modalVotes').textContent = String(movie.voteCount);
+            document.getElementById('modalPopularity').textContent = String(movie.popularity);
+            document.getElementById('modalLanguage').textContent = movie.language;
+            document.getElementById('modalOverview').textContent = movie.overview;
+            document.getElementById('modalTmdbLink').href = 'https://www.themoviedb.org/movie/' + movie.id;
+
+            const modal = document.getElementById('movieModal');
+            modal.classList.add('open');
+            document.body.style.overflow = 'hidden';
+          }
+
           async function loadMovies(category) {
             const content = document.getElementById('content');
             content.innerHTML = '<div class="state">Cargando películas...</div>';
@@ -226,32 +428,40 @@ const server = http.createServer((req, res) => {
               const response = await fetch('/api/movies?category=' + category);
               const payload = await response.json();
               const movies = payload.movies || [];
+              currentMovies = movies;
 
               if (!movies.length) {
                 content.innerHTML = '<div class="state">No se encontraron resultados para esta categoría.</div>';
                 return;
               }
 
-              const html = movies.map((movie) => {
+              const html = movies.map((movie, index) => {
                 const posterClass = movie.poster ? 'poster' : 'poster no-image';
                 const posterImage = movie.poster
-                  ? '<img src="' + movie.poster + '" alt="Póster de ' + movie.title.replace(/"/g, '&quot;') + '" loading="lazy" referrerpolicy="no-referrer">'
+                  ? '<img src="' + movie.poster + '" alt="Póster de ' + escapeHtml(movie.title) + '" loading="lazy" referrerpolicy="no-referrer">'
                   : '';
 
-                return '<article class="movie-card">'
+                return '<article class="movie-card" data-index="' + index + '">'
                   + '<div class="' + posterClass + '">'
                   + posterImage
                   + '<span class="poster-fallback">Sin póster</span>'
                   + '</div>'
                   + '<div class="info">'
-                  + '<div class="title">' + movie.title + '</div>'
+                  + '<div class="title">' + escapeHtml(movie.title) + '</div>'
                   + '<div class="meta"><span>' + movie.year + '</span><span>⭐ ' + movie.rating + '</span></div>'
-                  + '<p class="overview">' + movie.overview + '</p>'
+                  + '<div class="badges"><span class="badge">🗳️ ' + movie.voteCount + ' votos</span><span class="badge">🌐 ' + movie.language + '</span></div>'
+                  + '<p class="overview">' + escapeHtml(movie.overview) + '</p>'
                   + '</div>'
                   + '</article>';
               }).join('');
 
               content.innerHTML = html;
+              document.querySelectorAll('.movie-card').forEach((card) => {
+                card.addEventListener('click', () => {
+                  const index = Number(card.getAttribute('data-index'));
+                  openMovieDetails(index);
+                });
+              });
               document.querySelectorAll('.poster img').forEach((img) => {
                 img.addEventListener('error', () => {
                   const posterContainer = img.closest('.poster');
@@ -265,6 +475,12 @@ const server = http.createServer((req, res) => {
               content.innerHTML = '<div class="state">Error al consultar TMDB.</div>';
             }
           }
+
+          document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+              closeMovieDetails();
+            }
+          });
 
           loadMovies('action');
         </script>
