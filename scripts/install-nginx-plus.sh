@@ -31,15 +31,29 @@ APT::Sandbox::User "root";
 EOF
 
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
+sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-curl -fsSL https://nginx.org/keys/nginx_signing.key | sudo gpg --dearmor -o /etc/apt/keyrings/nginx.gpg
+codename="$(lsb_release -cs)"
 
-echo "deb [signed-by=/etc/apt/keyrings/nginx.gpg] https://pkgs.nginx.com/plus/ubuntu jammy nginx-plus" | \
+curl -fsSL https://nginx.org/keys/nginx_signing.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+curl -fsSL https://cs.nginx.com/static/keys/app-protect-security-updates.key | \
+  gpg --yes --dearmor | sudo tee /usr/share/keyrings/app-protect-security-updates.gpg > /dev/null
+
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://pkgs.nginx.com/plus/ubuntu ${codename} nginx-plus" | \
   sudo tee /etc/apt/sources.list.d/nginx-plus.list
 
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://pkgs.nginx.com/app-protect/ubuntu ${codename} nginx-plus" | \
+  sudo tee /etc/apt/sources.list.d/nginx-app-protect.list
+
+echo "deb [signed-by=/usr/share/keyrings/app-protect-security-updates.gpg] https://pkgs.nginx.com/app-protect-security-updates/ubuntu ${codename} nginx-plus" | \
+  sudo tee /etc/apt/sources.list.d/app-protect-security-updates.list
+
 sudo apt-get update
-sudo apt-get install -y nginx-plus
+sudo apt-get install -y nginx-plus app-protect
+
+sudo mkdir -p /etc/nginx/modules-enabled
+echo 'load_module modules/ngx_http_app_protect_module.so;' | \
+  sudo tee /etc/nginx/modules-enabled/50-mod-http-app-protect.conf >/dev/null
 
 sudo tee /etc/nginx/conf.d/nginx-one-api.conf >/dev/null <<'EOF'
 server {
