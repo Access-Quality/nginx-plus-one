@@ -226,18 +226,45 @@ jobs:
         run: |
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
-          ssh "ubuntu@${BASTION}" '
-            set -euo pipefail
-            echo "OS codename: $(lsb_release -cs)"
-            echo "Installed packages:"
-            dpkg -l | awk "\$2 ~ /nginx-plus|app-protect/ {print \$2, \$3}"
-            sudo nginx -T >/tmp/nginx-full.conf 2>/tmp/nginx-test.err
-            grep -q "load_module modules/ngx_http_app_protect_module.so;" /tmp/nginx-full.conf
-            grep -q "app_protect_enable on;" /tmp/nginx-full.conf
-            pgrep -fa bd-socket-plugin >/dev/null
-            echo "WAF module loaded and runtime process detected"
-            sudo tail -n 50 /var/log/nginx/error.log | grep -E "APP_PROTECT|app_protect" || true
-          '
+          CINE_PRIVATE="${{ needs.terraform.outputs.cine_private_ip }}"
+          ssh "ubuntu@${BASTION}" "CINE_PRIVATE='${CINE_PRIVATE}' bash -s" <<'EOF'
+          set -euo pipefail
+          echo "OS codename: $(lsb_release -cs)"
+          echo "Installed packages:"
+          dpkg -l | awk '$2 ~ /nginx-plus|app-protect/ {print $2, $3}'
+
+          echo "=== cine.conf presence ==="
+          if [[ -f /etc/nginx/conf.d/cine.conf ]]; then
+            ls -la /etc/nginx/conf.d/cine.conf
+            sudo sed -n "1,160p" /etc/nginx/conf.d/cine.conf
+          else
+            echo "ERROR: /etc/nginx/conf.d/cine.conf not found" >&2
+          fi
+
+          echo "=== NGINX config checks ==="
+          sudo nginx -T >/tmp/nginx-full.conf 2>/tmp/nginx-test.err
+          grep -q "load_module modules/ngx_http_app_protect_module.so;" /tmp/nginx-full.conf
+          grep -q "app_protect_enable on;" /tmp/nginx-full.conf
+          grep -q "server_name cine.example.com;" /tmp/nginx-full.conf
+          grep -q "server_name cine-tmdb.example.com;" /tmp/nginx-full.conf
+          grep -q "proxy_pass http://cine_backend;" /tmp/nginx-full.conf
+          grep -q "proxy_pass http://cine_tmdb_backend;" /tmp/nginx-full.conf
+
+          echo "=== Upstream quick checks ==="
+          echo "Cine private IP (from workflow): ${CINE_PRIVATE}"
+          curl -sS -o /dev/null -w "Upstream 3000 HTTP %{http_code}\n" "http://${CINE_PRIVATE}:3000/" || true
+          curl -sS -o /dev/null -w "Upstream 3001 HTTP %{http_code}\n" "http://${CINE_PRIVATE}:3001/" || true
+
+          echo "=== Local vhost checks (should NOT be Welcome page) ==="
+          echo "cine.example.com title:"
+          curl -sS -H "Host: cine.example.com" http://127.0.0.1/ | grep -m1 -E "<title>" || true
+          echo "cine-tmdb.example.com title:"
+          curl -sS -H "Host: cine-tmdb.example.com" http://127.0.0.1/ | grep -m1 -E "<title>" || true
+
+          pgrep -fa bd-socket-plugin >/dev/null
+          echo "WAF module loaded and runtime process detected"
+          sudo tail -n 50 /var/log/nginx/error.log | grep -E "APP_PROTECT|app_protect" || true
+          EOF
 
       - name: Cleanup temporary keys and secrets
         shell: bash
