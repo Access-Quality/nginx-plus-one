@@ -51,9 +51,9 @@ echo "deb [signed-by=/usr/share/keyrings/app-protect-security-updates.gpg] https
 sudo apt-get update
 sudo apt-get install -y nginx-plus app-protect
 
-sudo mkdir -p /etc/nginx/modules-enabled
-echo 'load_module modules/ngx_http_app_protect_module.so;' | \
-  sudo tee /etc/nginx/modules-enabled/50-mod-http-app-protect.conf >/dev/null
+if ! sudo grep -q '^load_module modules/ngx_http_app_protect_module.so;$' /etc/nginx/nginx.conf; then
+  sudo sed -i '1iload_module modules/ngx_http_app_protect_module.so;' /etc/nginx/nginx.conf
+fi
 
 sudo tee /etc/nginx/conf.d/nginx-one-api.conf >/dev/null <<'EOF'
 server {
