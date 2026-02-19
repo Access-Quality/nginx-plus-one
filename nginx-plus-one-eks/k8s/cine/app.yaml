@@ -303,6 +303,11 @@ metadata:
   namespace: cine
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: cine
@@ -311,6 +316,7 @@ spec:
       labels:
         app: cine
     spec:
+      terminationGracePeriodSeconds: 10
       containers:
         - name: cine
           image: public.ecr.aws/docker/library/node:20-alpine
