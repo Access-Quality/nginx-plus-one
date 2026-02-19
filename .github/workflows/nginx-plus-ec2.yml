@@ -10,9 +10,9 @@ jobs:
       XC_API_P12_FILE: ${{ secrets.XC_API_P12_FILE }}
       XC_API_URL: ${{ secrets.XC_API_URL }}
       VES_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
-      XC_NAMESPACE: default
+      NGINX_ONE_NAMESPACE: default
     steps:
-      - name: Create WAF policy cinex (transparent/monitoring)
+      - name: Create NGINX One App Protect policy cinex (transparent)
         shell: bash
         run: |
           set -euo pipefail
@@ -46,41 +46,57 @@ jobs:
             printf '%s' "$XC_API_P12_FILE" > api.p12
           fi
 
-          echo "Downloading vesctl"
-          VESCTL_VERSION="$(curl -fsSL https://downloads.volterra.io/releases/vesctl/latest.txt)"
-          curl -fsSLo vesctl.linux-amd64.gz "https://vesio.azureedge.net/releases/vesctl/${VESCTL_VERSION}/vesctl.linux-amd64.gz"
-          gzip -d ./vesctl.linux-amd64.gz
-          mv vesctl.linux-amd64 vesctl
-          chmod +x ./vesctl
+          # NGINX One API base (OpenAPI): https://{tenant}.console.ves.volterra.io/api/nginx/one/namespaces/{namespace}
+          nginx_one_base_url="${api_url%/}/nginx/one/namespaces/${NGINX_ONE_NAMESPACE}"
+          policies_url="${nginx_one_base_url}/app-protect/policies"
+          echo "Using NGINX One policies URL: ${policies_url}"
 
-          cat > .vesconfig <<EOF
-          server-urls: ${api_url}
-          p12-bundle: ./api.p12
+          # Minimal F5 WAF for NGINX policy JSON derived from the base template.
+          # Transparent mode logs but does not block.
+          cat > cinex-policy.json <<'EOF'
+          {
+            "policy": {
+              "name": "cinex",
+              "template": { "name": "POLICY_TEMPLATE_NGINX_BASE" },
+              "applicationLanguage": "utf-8",
+              "enforcementMode": "transparent"
+            }
+          }
           EOF
 
-          # Create a minimal App Firewall (WAF) configuration object.
-          # "Transparent" is implemented as non-blocking / monitoring.
-          cat > cinex.yaml <<EOF
-          metadata:
-            name: cinex
-            disable: false
-            namespace: ${XC_NAMESPACE}
-          spec:
-            monitoring: {}
-            allow_all_response_codes: {}
-            default_anonymization: {}
-            use_default_blocking_page: {}
-            default_bot_setting: {}
-            default_detection_settings: {}
-          EOF
+          # Check if it already exists (idempotent).
+          existing_json="$workdir/existing.json"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            --get \
+            --data-urlencode "paginated=false" \
+            --data-urlencode "filter_fields=name" \
+            --data-urlencode "filter_ops=IN" \
+            --data-urlencode "filter_values=cinex" \
+            "${policies_url}" \
+            > "$existing_json" || true
 
-          if ./vesctl --config .vesconfig configuration list app_firewall -n "${XC_NAMESPACE}" --outfmt json | grep -q '"name": "cinex"'; then
-            echo "App Firewall 'cinex' exists; replacing"
-            ./vesctl --config .vesconfig configuration replace app_firewall cinex -i ./cinex.yaml
-          else
-            echo "Creating App Firewall 'cinex'"
-            ./vesctl --config .vesconfig configuration create app_firewall cinex -i ./cinex.yaml
+          if [[ -f "$existing_json" ]] && grep -Eq '"name"[[:space:]]*:[[:space:]]*"cinex"' "$existing_json"; then
+            echo "NGINX One App Protect policy 'cinex' already exists"
+            exit 0
           fi
+
+          policy_b64="$(base64 < cinex-policy.json | tr -d '\n')"
+          create_body="{\"policy\":\"${policy_b64}\"}"
+
+          echo "Creating NGINX One App Protect policy 'cinex'"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "$create_body" \
+            "${policies_url}" \
+            > /tmp/nginx-one-cinex-create.json
+
+          echo "Created policy (response):"
+          cat /tmp/nginx-one-cinex-create.json
 
   setup-tfc:
     needs: create-waf-policy-cinex
