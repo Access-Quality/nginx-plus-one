@@ -104,13 +104,13 @@ jobs:
         working-directory: nginx-plus-one-eks/terraform
         run: terraform fmt -check -recursive
 
-      - name: Terraform Validate
-        working-directory: nginx-plus-one-eks/terraform
-        run: terraform validate -no-color
-
       - name: Terraform Init
         working-directory: nginx-plus-one-eks/terraform
         run: terraform init -no-color -backend-config="organization=$TFC_ORG"
+
+      - name: Terraform Validate
+        working-directory: nginx-plus-one-eks/terraform
+        run: terraform validate -no-color
 
       - name: Terraform Plan
         working-directory: nginx-plus-one-eks/terraform
