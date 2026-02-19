@@ -1,0 +1,41 @@
+name: eks-terraform-destroy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-eks-destroy:
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Write SSH private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Terraform Init
+        working-directory: nginx-plus-one-eks/terraform
+        run: terraform init -backend-config="organization=$TFC_ORG"
+
+      - name: Terraform Destroy
+        working-directory: nginx-plus-one-eks/terraform
+        run: terraform destroy -auto-approve -var="aws_region=$AWS_REGION"
+
+      - name: Cleanup SSH key
+        run: rm -f ~/.ssh/id_rsa
