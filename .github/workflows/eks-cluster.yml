@@ -247,10 +247,23 @@ jobs:
             host="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
             ip="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
             if [[ -n "$host" ]]; then
-              resolved_ip="$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' "$host" 2>/dev/null || true)"
+              resolved_ips=""
+              for j in {1..30}; do
+                resolved_ips="$(getent ahostsv4 "$host" 2>/dev/null | awk '{print $1}' | sort -u | paste -sd',' - || true)"
+                if [[ -n "$resolved_ips" ]]; then
+                  break
+                fi
+                sleep 2
+              done
+              if [[ -z "$resolved_ips" ]]; then
+                resolved_ips="$(python3 -c 'import socket,sys; ips=sorted({ai[4][0] for ai in socket.getaddrinfo(sys.argv[1], 80, family=socket.AF_INET)}); print(",".join(ips))' "$host" 2>/dev/null || true)"
+              fi
+              resolved_ip="${resolved_ips%%,*}"
               echo "PUBLIC_URL=http://$host/"
-              if [[ -n "$resolved_ip" ]]; then
+              echo "PUBLIC_HOSTNAME=$host"
+              if [[ -n "$resolved_ips" ]]; then
                 echo "PUBLIC_IP=$resolved_ip"
+                echo "PUBLIC_IPS=$resolved_ips"
               else
                 echo "PUBLIC_IP=<unresolved>"
               fi
