@@ -1,4 +1,4 @@
-name: eks-cluster-destroy
+name: EKS Cluster Destroy
 
 on:
   workflow_dispatch:

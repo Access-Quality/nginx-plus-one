@@ -1,4 +1,4 @@
-name: eks-cluster
+name: EKS Cluster
 
 on:
   workflow_dispatch:
