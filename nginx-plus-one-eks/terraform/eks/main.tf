@@ -88,6 +88,9 @@ module "eks" {
       name           = "${var.name_prefix}-ng"
       instance_types = ["t3.medium"]
 
+      use_custom_launch_template = false
+      create_launch_template     = false
+
       min_size     = 1
       max_size     = 3
       desired_size = 2
