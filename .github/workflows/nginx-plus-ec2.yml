@@ -334,6 +334,8 @@ jobs:
 
       - name: Upload NGINX secrets
         run: |
+          set -euo pipefail
+          BASTION="${{ needs.terraform.outputs.public_ip }}"
           if [[ -z "$NGINX_REPO_CRT" || -z "$NGINX_REPO_KEY" ]]; then
             echo "Missing NGINX repo cert/key secrets." >&2
             exit 1
@@ -342,10 +344,31 @@ jobs:
           printf '%s' "$NGINX_REPO_KEY" > /tmp/nginx-repo.key
           printf '%s' "$LICENSE_JWT" > /tmp/license.jwt
           printf '%s' "$LICENSE_KEY" > /tmp/license.key
-          scp /tmp/nginx-repo.crt ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/nginx-repo.crt
-          scp /tmp/nginx-repo.key ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/nginx-repo.key
-          scp /tmp/license.jwt ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/license.jwt
-          scp /tmp/license.key ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/license.key
+
+          ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+
+          scp_retry() {
+            local src="$1"
+            local dst="$2"
+            local attempt
+            for attempt in {1..12}; do
+              if scp "${ssh_opts[@]}" "$src" "$dst"; then
+                return 0
+              fi
+              echo "SCP failed (attempt ${attempt}/12). Retrying in 10s..." >&2
+              sleep 10
+            done
+            echo "SCP failed after 12 attempts: $src -> $dst" >&2
+            return 1
+          }
+
+          # Quick probe before uploads
+          ssh "${ssh_opts[@]}" "ubuntu@${BASTION}" "true"
+
+          scp_retry /tmp/nginx-repo.crt "ubuntu@${BASTION}:/tmp/nginx-repo.crt"
+          scp_retry /tmp/nginx-repo.key "ubuntu@${BASTION}:/tmp/nginx-repo.key"
+          scp_retry /tmp/license.jwt "ubuntu@${BASTION}:/tmp/license.jwt"
+          scp_retry /tmp/license.key "ubuntu@${BASTION}:/tmp/license.key"
 
       - name: Install NGINX Plus + WAF + Agent
         run: |
