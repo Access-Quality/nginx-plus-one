@@ -1,5 +1,9 @@
 # Ignore only files at repository root
 /*
+!/nginx-plus-one-eks/
+!/nginx-plus-one-eks/**
+!/nginx-plus-one-vm/
+!/nginx-plus-one-vm/**
 !/.gitignore
 !/README.md
 !/.github/
