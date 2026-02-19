@@ -90,7 +90,7 @@ jobs:
           echo "cluster_name=$cluster_name" >> "$GITHUB_OUTPUT"
           echo "ssh_cidr=$ssh_cidr" >> "$GITHUB_OUTPUT"
 
-  terraform:
+  terraform-plan:
     needs: setup-tfc
     runs-on: ubuntu-latest
     env:
@@ -165,7 +165,41 @@ jobs:
           path: |
             /tmp/tfplan
             /tmp/tfplan.json
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  terraform-apply:
+    needs: [setup-tfc, terraform-plan]
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Download terraform plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eks-terraform-plan
+          path: /tmp
+
+      - name: Terraform init
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          terraform init \
+            -backend-config="organization=$TFC_ORG"
 
       - name: Terraform apply
         working-directory: nginx-plus-one-eks/terraform/eks
@@ -179,7 +213,7 @@ jobs:
           echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
 
   deploy-hola-cine:
-    needs: [setup-tfc, terraform]
+    needs: [setup-tfc, terraform-apply]
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
