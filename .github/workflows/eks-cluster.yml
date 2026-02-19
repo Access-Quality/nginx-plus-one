@@ -229,7 +229,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/
+          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/namespace.yaml
+          for i in {1..30}; do
+            if kubectl get ns cine >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/app.yaml
           kubectl -n cine rollout status deploy/hola-cine --timeout=10m
 
       - name: Wait for public URL
