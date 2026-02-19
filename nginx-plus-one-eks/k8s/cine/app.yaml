@@ -313,7 +313,7 @@ spec:
     spec:
       containers:
         - name: cine
-          image: node:20-alpine
+          image: public.ecr.aws/docker/library/node:20-alpine
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
