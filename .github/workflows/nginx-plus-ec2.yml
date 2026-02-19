@@ -427,6 +427,35 @@ jobs:
           sudo systemctl restart nginx-agent || true
           EOF
 
+      - name: Fail if NGINX welcome page is served
+        run: |
+          set -euo pipefail
+          BASTION="${{ needs.terraform.outputs.public_ip }}"
+
+          ssh "ubuntu@${BASTION}" 'bash -s' <<'EOF'
+          set -euo pipefail
+
+          check_welcome() {
+            local host="${1:-}"
+            local body
+
+            if [[ -n "$host" ]]; then
+              body="$(curl -fsS -H "Host: $host" http://127.0.0.1/ || true)"
+            else
+              body="$(curl -fsS http://127.0.0.1/ || true)"
+            fi
+
+            if printf '%s' "$body" | grep -qi "Welcome to nginx"; then
+              echo "ERROR: NGINX welcome page is being served (host=${host:-<none>})" >&2
+              exit 1
+            fi
+          }
+
+          check_welcome ""
+          check_welcome "cine.example.com"
+          check_welcome "cine-tmdb.example.com"
+          EOF
+
       - name: Validate WAF installation and runtime
         run: |
           set -euo pipefail
