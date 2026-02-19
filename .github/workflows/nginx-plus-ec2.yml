@@ -9,44 +9,36 @@ jobs:
     env:
       XC_API_P12_FILE: ${{ secrets.XC_API_P12_FILE }}
       XC_API_URL: ${{ secrets.XC_API_URL }}
-      XC_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
+      VES_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
       XC_NAMESPACE: default
     steps:
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.5
-
       - name: Create WAF policy cinex (transparent/monitoring)
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${XC_API_P12_FILE:-}" || -z "${XC_API_URL:-}" || -z "${XC_P12_PASSWORD:-}" ]]; then
+          if [[ -z "${XC_API_P12_FILE:-}" || -z "${XC_API_URL:-}" || -z "${VES_P12_PASSWORD:-}" ]]; then
             echo "Missing one or more required secrets: XC_API_P12_FILE, XC_API_URL, XC_P12_PASSWORD" >&2
             exit 1
           fi
 
-          # Typical format (per examples): https://<tenant>.console.ves.volterra.io/api/
-          # Normalize aggressively to avoid malformed URLs/hosts.
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
+
+          # Typical format (per examples): https://<tenant>.console.ves.volterra.io/api
+          # Normalize to a clean, newline-free URL with /api.
           api_url_raw="$(printf '%s' "$XC_API_URL" | tr -d '\r\n')"
           api_url="$api_url_raw"
           if [[ "$api_url" != http://* && "$api_url" != https://* ]]; then
             api_url="https://$api_url"
           fi
-          # Ensure the base ends with /api/ (not just /api) to tolerate naive string concatenation.
           if [[ "$api_url" == */api/* ]]; then
-            api_url="${api_url%%/api/*}/api/"
-          elif [[ "$api_url" == */api ]]; then
-            api_url="$api_url/"
-          else
-            api_url="${api_url%/}/api/"
+            api_url="${api_url%%/api/*}/api"
+          elif [[ "$api_url" != */api ]]; then
+            api_url="${api_url%/}/api"
           fi
           echo "Using XC API URL: $api_url"
-
-          workdir="$(mktemp -d)"
-          trap 'rm -rf "$workdir"' EXIT
-          cd "$workdir"
 
           # XC_API_P12_FILE is expected to be base64-encoded.
           if ! printf '%s' "$XC_API_P12_FILE" | base64 --decode > api.p12 2>/dev/null; then
@@ -54,49 +46,44 @@ jobs:
             printf '%s' "$XC_API_P12_FILE" > api.p12
           fi
 
-          # Volterra provider uses VES_P12_PASSWORD for the P12 password.
-          export VES_P12_PASSWORD="$XC_P12_PASSWORD"
-          export TF_IN_AUTOMATION=1
-          export TF_INPUT=0
+          echo "Downloading vesctl"
+          VESCTL_VERSION="$(curl -fsSL https://downloads.volterra.io/releases/vesctl/latest.txt)"
+          curl -fsSLo vesctl.linux-amd64.gz "https://vesio.azureedge.net/releases/vesctl/${VESCTL_VERSION}/vesctl.linux-amd64.gz"
+          gzip -d ./vesctl.linux-amd64.gz
+          mv vesctl.linux-amd64 vesctl
+          chmod +x ./vesctl
 
-          cat > main.tf <<'HCL'
-          terraform {
-            required_providers {
-              volterra = {
-                source  = "volterraedge/volterra"
-                version = ">= 0.11.34"
-              }
-            }
-          }
+          cat > .vesconfig <<EOF
+          server-urls: ${api_url}
+          p12-bundle: ./api.p12
+          EOF
 
-          variable "xc_api_url" { type = string }
-          variable "xc_namespace" { type = string }
+          # Create a minimal App Firewall (WAF) configuration object.
+          # "Transparent" is implemented as non-blocking / monitoring.
+          cat > cinex.yaml <<EOF
+          metadata:
+            name: cinex
+            disable: false
+            namespace: ${XC_NAMESPACE}
+          spec:
+            monitoring: {}
+            allow_all_response_codes: {}
+            default_anonymization: {}
+            use_default_blocking_page: {}
+            default_bot_setting: {}
+            default_detection_settings: {}
+          EOF
 
-          provider "volterra" {
-            api_p12_file = "${path.module}/api.p12"
-            url          = var.xc_api_url
-          }
-
-          # "Transparent" = non-blocking (monitoring). Provider uses `blocking = false`.
-          resource "volterra_app_firewall" "cinex" {
-            name                     = "cinex"
-            namespace                = var.xc_namespace
-            allow_all_response_codes  = true
-            default_anonymization     = true
-            use_default_blocking_page = true
-            default_bot_setting       = true
-            default_detection_settings= true
-            use_loadbalancer_setting  = true
-            blocking                  = false
-          }
-          HCL
-
-          terraform init -no-color
-          terraform apply -auto-approve -no-color \
-            -var="xc_api_url=$api_url" \
-            -var="xc_namespace=$XC_NAMESPACE"
+          if ./vesctl --config .vesconfig configuration list app_firewall -n "${XC_NAMESPACE}" --outfmt json | grep -q '"name": "cinex"'; then
+            echo "App Firewall 'cinex' exists; replacing"
+            ./vesctl --config .vesconfig configuration replace app_firewall cinex -i ./cinex.yaml
+          else
+            echo "Creating App Firewall 'cinex'"
+            ./vesctl --config .vesconfig configuration create app_firewall cinex -i ./cinex.yaml
+          fi
 
   setup-tfc:
+    needs: create-waf-policy-cinex
     runs-on: ubuntu-latest
     env:
       TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
