@@ -35,6 +35,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in TFC_TOKEN TFC_ORG AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SSH_PRIVATE_KEY; do
+            if [[ -z "${!v:-}" ]]; then
+              echo "Missing required secret env: $v" >&2
+              exit 1
+            fi
+          done
+
       - name: Ensure Terraform Cloud workspace exists
         shell: bash
         run: |
@@ -74,17 +85,6 @@ jobs:
           cat /tmp/ws_create.json >&2 || true
           exit 1
 
-      - name: Validate required secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-          for v in TFC_TOKEN TFC_ORG AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SSH_PRIVATE_KEY; do
-            if [[ -z "${!v:-}" ]]; then
-              echo "Missing required secret env: $v" >&2
-              exit 1
-            fi
-          done
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -95,6 +95,7 @@ jobs:
       - name: Write SSH private key
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
