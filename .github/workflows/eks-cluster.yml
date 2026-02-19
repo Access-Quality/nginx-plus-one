@@ -212,7 +212,7 @@ jobs:
           echo "cluster_region=$(terraform output -raw cluster_region)"
           echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
 
-  deploy-hola-cine:
+  deploy-cine:
     needs: [setup-tfc, terraform-apply]
     runs-on: ubuntu-latest
     env:
@@ -236,27 +236,32 @@ jobs:
           aws eks wait cluster-active --name "$CLUSTER_NAME" --region "$AWS_REGION"
           aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
-      - name: Deploy hola-cine app
+      - name: Deploy cine app
         shell: bash
         run: |
           set -euo pipefail
-          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/namespace.yaml
+          kubectl apply -f nginx-plus-one-eks/k8s/cine/namespace.yaml
           for i in {1..30}; do
             if kubectl get ns cine >/dev/null 2>&1; then
               break
             fi
             sleep 2
           done
-          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/app.yaml
-          kubectl -n cine rollout status deploy/hola-cine --timeout=10m
+
+          # Cleanup old demo app (best-effort)
+          kubectl -n cine delete svc hola-cine --ignore-not-found=true || true
+          kubectl -n cine delete deploy hola-cine --ignore-not-found=true || true
+
+          kubectl apply -f nginx-plus-one-eks/k8s/cine/app.yaml
+          kubectl -n cine rollout status deploy/cine --timeout=10m
 
       - name: Wait for public URL
         shell: bash
         run: |
           set -euo pipefail
           for i in {1..60}; do
-            host="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-            ip="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            host="$(kubectl -n cine get svc cine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            ip="$(kubectl -n cine get svc cine -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
             if [[ -n "$host" ]]; then
               resolved_ips=""
               for j in {1..30}; do
@@ -288,5 +293,5 @@ jobs:
             sleep 10
           done
           echo "Timed out waiting for Service LoadBalancer address" >&2
-          kubectl -n cine get svc hola-cine -o yaml || true
+          kubectl -n cine get svc cine -o yaml || true
           exit 1
