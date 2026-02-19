@@ -1,128 +1,25 @@
-# NGINX Plus EC2 + NGINX One (Terraform Cloud + GitHub Actions)
+# Monorepo nginx-plus-one
 
-This repository provisions an AWS EC2 instance with Terraform Cloud (local execution), installs NGINX Plus, and registers it with NGINX One using GitHub Actions.
+Este directorio contiene varios proyectos relacionados con NGINX Plus y NGINX One.
 
-## Requirements
+- Cada subdirectorio representa un proyecto independiente.
+- Los archivos y carpetas del proyecto original ahora están en nginx-plus-one-vm/.
 
-- Terraform Cloud organization and token.
-- AWS credentials with permissions to create EC2, security groups, and key pairs.
-- NGINX Plus credentials (repo cert/key) and NGINX Plus license (jwt/key).
-- NGINX One data plane key.
+## Estructura
 
-## GitHub Secrets
+- nginx-plus-one-vm/: Proyecto original (VM, Terraform, scripts, workflows)
+- Otros proyectos: Agrega nuevos subdirectorios aquí
 
-Configure these secrets in your repository:
+## Cómo agregar nuevos proyectos
 
-- `TFC_TOKEN`
-- `TFC_ORG`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION`
-- `NGINX_REPO_CRT`
-- `NGINX_REPO_KEY`
-- `LICENSE_JWT`
-- `LICENSE_KEY`
-- `DATA_PLANE_KEY`
-- `TMDB_API_KEY`
+1. Crea un nuevo directorio para tu proyecto.
+2. Añade scripts, infra, workflows y documentación específica.
+3. Usa los secrets de GitHub Actions globales o específicos según necesidad.
 
-### Secret contents
+## Push/Pull
 
-- `NGINX_REPO_CRT`: contents of your NGINX Plus repo `.crt` file.
-- `NGINX_REPO_KEY`: contents of your NGINX Plus repo `.key` file.
-- `LICENSE_JWT`: contents of your NGINX Plus license `.jwt` file.
-- `LICENSE_KEY`: contents of your NGINX Plus license `.key` file.
-- `DATA_PLANE_KEY`: NGINX One data plane key.
-- `TMDB_API_KEY`: API key de The Movie Database (TMDB).
+Usa git push/pull desde la raíz para todo el monorepo.
 
-## Workflows
+---
 
-- Deploy: [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml)
-- Destroy: [.github/workflows/nginx-plus-ec2-destroy.yml](.github/workflows/nginx-plus-ec2-destroy.yml)
-
-Run each workflow manually from GitHub Actions.
-
-## Terraform
-
-Terraform configuration lives in [terraform/nginx-plus-ec2](terraform/nginx-plus-ec2).
-
-- Creates an EC2 instance (Ubuntu 24.04).
-- Uses the default VPC and a default subnet.
-- Creates a security group for SSH/HTTP/HTTPS.
-- Generates an EC2 key pair from a dynamic SSH public key.
-
-## NGINX Plus + NGINX One
-
-Installation and registration steps are in [scripts/install-nginx-plus.sh](scripts/install-nginx-plus.sh):
-
-- Adds the NGINX Plus repo (jammy), installs NGINX Plus.
-- Configures license files at `/etc/nginx/license.jwt` and `/etc/nginx/license.key`.
-- Enables NGINX Plus API on `127.0.0.1:8080`.
-- Installs and starts the NGINX Agent with `DATA_PLANE_KEY`.
-
-## Cine apps
-
-The deploy workflow now installs two Node.js apps on the cine instance:
-
-- `Cine` (OMDb) on port `3000`.
-- `Cine TMDB` (The Movie Database) on port `3001`.
-
-Both are deployed by [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) and managed with systemd services.
-
-The workflow builds each app in a separate job (`build-cine-omdb` and `build-cine-tmdb`) and then deploys both artifacts to the same cine VM in `deploy-cine`.
-
-NGINX Plus routes them by hostname:
-
-- `cine.example.com` → Cine (OMDb, port 3000)
-- `cine-tmdb.example.com` → Cine TMDB (port 3001)
-
-## Notes
-
-- The SSH CIDR is set to the GitHub Actions runner public IP at runtime.
-- If you need a specific VPC or subnet, update the Terraform configuration.
-
-## Troubleshooting
-
-- NGINX Plus repo 400/403: verify `NGINX_REPO_CRT` and `NGINX_REPO_KEY` secrets, and that the repo key matches the cert.
-- NGINX service fails with license error: verify `LICENSE_JWT` and `LICENSE_KEY` secrets and that they belong to the same subscription.
-- Instance not showing in NGINX One: confirm `DATA_PLANE_KEY` is correct and allow a few minutes after agent start.
-- No metrics in NGINX One: confirm the API is enabled on `127.0.0.1:8080` and NGINX reloaded successfully.
-
-## Verification
-
-On the EC2 instance:
-
-```bash
-systemctl status nginx --no-pager
-systemctl status nginx-agent --no-pager
-curl -I http://localhost
-```
-
-## WAF blocking tests
-
-Use the instance public IP plus an explicit `Host` header.
-
-Test 1 (should pass):
-
-```bash
-curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/"
-```
-
-Test 2 (should be blocked):
-
-```bash
-curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/?id=1%20OR%201%3D1--"
-```
-
-If you don't see a block, check logs on the instance:
-
-```bash
-sudo tail -n 200 /var/log/nginx/error.log | egrep -i "APP_PROTECT|app_protect|violation|blocked" || true
-```
-
-## Actualizar la política WAF
-
-Para usar una política WAF diferente, reemplaza el archivo scripts/cinex-policy.json con el contenido de la nueva política exportada desde la consola de NGINX One (F5 DCS).
-
-- Puedes descargar/exportar la política desde la consola de NGINX One (F5 DCS) en formato JSON.
-- Guarda ese contenido en scripts/cinex-policy.json antes de ejecutar el workflow de despliegue.
-- El pipeline copiará automáticamente la política a la instancia y la aplicará en NGINX Plus.
+Este README es general para el monorepo. Cada proyecto puede tener su propio README interno.
