@@ -353,7 +353,7 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
-      - name: Upload cinex policy file to App Protect
+      - name: Upload App Protect policy file
         run: |
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
@@ -362,9 +362,14 @@ jobs:
             exit 1
           fi
 
-          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cinex.json"
+          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cine.json"
           ssh "ubuntu@${BASTION}" \
-            "sudo mkdir -p /etc/app_protect/conf && sudo mv /tmp/cinex.json /etc/app_protect/conf/cinex.json && sudo chown root:root /etc/app_protect/conf/cinex.json && sudo chmod 0644 /etc/app_protect/conf/cinex.json"
+            "sudo mkdir -p /etc/nginx/app_protect/conf /etc/app_protect/conf && \
+             sudo cp /tmp/cine.json /etc/nginx/app_protect/conf/cine.json && \
+             sudo cp /tmp/cine.json /etc/app_protect/conf/cinex.json && \
+             sudo chown root:root /etc/nginx/app_protect/conf/cine.json /etc/app_protect/conf/cinex.json && \
+             sudo chmod 0644 /etc/nginx/app_protect/conf/cine.json /etc/app_protect/conf/cinex.json && \
+             rm -f /tmp/cine.json"
 
       - name: Configure NGINX hostnames for Cine apps
         run: |
@@ -399,6 +404,7 @@ jobs:
           sudo nginx -T >/tmp/nginx-full.conf 2>/tmp/nginx-test.err
           grep -q "load_module modules/ngx_http_app_protect_module.so;" /tmp/nginx-full.conf
           grep -q "app_protect_enable on;" /tmp/nginx-full.conf
+          grep -q "app_protect_policy_file /etc/nginx/app_protect/conf/cine.json;" /tmp/nginx-full.conf
           grep -Eq "server_name\\s+(_\\s+)?cine\\.example\\.com;" /tmp/nginx-full.conf
           grep -q "server_name cine-tmdb.example.com;" /tmp/nginx-full.conf
           grep -q "proxy_pass http://cine_backend;" /tmp/nginx-full.conf
