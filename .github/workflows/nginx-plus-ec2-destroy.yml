@@ -4,7 +4,115 @@ on:
   workflow_dispatch:
 
 jobs:
+  delete-waf-policy-cinex:
+    runs-on: ubuntu-latest
+    env:
+      XC_API_P12_FILE: ${{ secrets.XC_API_P12_FILE }}
+      XC_API_URL: ${{ secrets.XC_API_URL }}
+      VES_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
+      NGINX_ONE_NAMESPACE: default
+    steps:
+      - name: Delete NGINX One App Protect policy cinex
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${XC_API_P12_FILE:-}" || -z "${XC_API_URL:-}" || -z "${VES_P12_PASSWORD:-}" ]]; then
+            echo "Missing one or more required secrets: XC_API_P12_FILE, XC_API_URL, XC_P12_PASSWORD. Skipping policy delete." >&2
+            exit 0
+          fi
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
+
+          api_url_raw="$(printf '%s' "$XC_API_URL" | tr -d '\r\n')"
+          api_url="$api_url_raw"
+          if [[ "$api_url" != http://* && "$api_url" != https://* ]]; then
+            api_url="https://$api_url"
+          fi
+          if [[ "$api_url" == */api/* ]]; then
+            api_url="${api_url%%/api/*}/api"
+          elif [[ "$api_url" != */api ]]; then
+            api_url="${api_url%/}/api"
+          fi
+          echo "Using XC API URL: $api_url"
+
+          if ! printf '%s' "$XC_API_P12_FILE" | base64 --decode > api.p12 2>/dev/null; then
+            echo "XC_API_P12_FILE does not look like base64; writing it as-is to api.p12" >&2
+            printf '%s' "$XC_API_P12_FILE" > api.p12
+          fi
+
+          openssl_conf="$workdir/openssl.cnf"
+          cat > "$openssl_conf" <<'EOF'
+          openssl_conf = openssl_init
+
+          [openssl_init]
+          providers = provider_sect
+
+          [provider_sect]
+          default = default_sect
+          legacy = legacy_sect
+
+          [default_sect]
+          activate = 1
+
+          [legacy_sect]
+          activate = 1
+          EOF
+
+          export OPENSSL_CONF="$openssl_conf"
+          for d in /usr/lib/x86_64-linux-gnu/ossl-modules /usr/lib/ssl/ossl-modules /usr/local/lib/ossl-modules; do
+            if [[ -d "$d" ]]; then
+              export OPENSSL_MODULES="$d"
+              break
+            fi
+          done
+
+          if ! openssl pkcs12 -in api.p12 -passin pass:"$VES_P12_PASSWORD" -nodes -nokeys >/dev/null 2>&1; then
+            echo "Failed to read PKCS#12 bundle (api.p12). Skipping policy delete." >&2
+            exit 0
+          fi
+
+          nginx_one_base_url="${api_url%/}/nginx/one/namespaces/${NGINX_ONE_NAMESPACE}"
+          policies_url="${nginx_one_base_url}/app-protect/policies"
+          echo "Using NGINX One policies URL: ${policies_url}"
+
+          existing_json="$workdir/existing.json"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            --get \
+            --data-urlencode "paginated=false" \
+            --data-urlencode "filter_fields=name" \
+            --data-urlencode "filter_ops=IN" \
+            --data-urlencode "filter_values=cinex" \
+            "${policies_url}" \
+            > "$existing_json" || true
+
+          policy_object_id=""
+          if [[ -f "$existing_json" ]]; then
+            policy_object_id="$(python3 -c 'import json,sys; data=json.load(open(sys.argv[1],"r",encoding="utf-8")); items=data.get("items") or []; print(next((i.get("object_id","") for i in items if i.get("name")=="cinex"), ""))' "$existing_json" 2>/dev/null || true)"
+          fi
+
+          if [[ -z "$policy_object_id" ]]; then
+            echo "Policy 'cinex' not found; nothing to delete."
+            exit 0
+          fi
+
+          echo "Deleting policy 'cinex' (object_id=$policy_object_id)"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            -X DELETE \
+            "${policies_url}/${policy_object_id}" \
+            > /tmp/nginx-one-cinex-delete.json || true
+
+          echo "Delete response (if any):"
+          cat /tmp/nginx-one-cinex-delete.json 2>/dev/null || true
+
   destroy:
+    needs: delete-waf-policy-cinex
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
