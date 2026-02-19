@@ -240,11 +240,26 @@ jobs:
             host="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
             ip="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
             if [[ -n "$host" ]]; then
+              resolved_ip="$(python3 - <<'PY'
+import socket,sys
+host=sys.argv[1]
+try:
+    print(socket.gethostbyname(host))
+except Exception:
+    print("")
+PY
+"$host")"
               echo "PUBLIC_URL=http://$host/"
+              if [[ -n "$resolved_ip" ]]; then
+                echo "PUBLIC_IP=$resolved_ip"
+              else
+                echo "PUBLIC_IP=<unresolved>"
+              fi
               exit 0
             fi
             if [[ -n "$ip" ]]; then
               echo "PUBLIC_URL=http://$ip/"
+              echo "PUBLIC_IP=$ip"
               exit 0
             fi
             sleep 10
