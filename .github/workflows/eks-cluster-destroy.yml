@@ -1,0 +1,191 @@
+name: eks-cluster-destroy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: eks-cluster
+  cancel-in-progress: false
+
+jobs:
+  setup-tfc:
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+    outputs:
+      tf_workspace: ${{ steps.set-outputs.outputs.tf_workspace }}
+      name_prefix: ${{ steps.set-outputs.outputs.name_prefix }}
+      ssh_cidr: ${{ steps.set-outputs.outputs.ssh_cidr }}
+      cluster_name: ${{ steps.set-outputs.outputs.cluster_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Set dynamic vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          echo "TFC_WORKSPACE=nginx-plus-eks-$repo_name" >> "$GITHUB_ENV"
+          echo "TF_WORKSPACE=nginx-plus-eks-$repo_name" >> "$GITHUB_ENV"
+          echo "NAME_PREFIX=nginx-plus-one-eks-$repo_name" >> "$GITHUB_ENV"
+          echo "CLUSTER_NAME=nginx-plus-one-eks-$repo_name" >> "$GITHUB_ENV"
+          echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
+
+      - name: Ensure TFC workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TFC_TOKEN:-}" || -z "${TFC_ORG:-}" ]]; then
+            echo "Missing required secrets: TFC_TOKEN and/or TFC_ORG" >&2
+            exit 1
+          fi
+
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TFC_TOKEN" \
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+
+          if [[ "$status" == "404" ]]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $TFC_TOKEN" \
+              -H "Content-Type: application/vnd.api+json" \
+              -d "{\"data\":{\"type\":\"workspaces\",\"attributes\":{\"name\":\"$TFC_WORKSPACE\",\"execution-mode\":\"local\"}}}" \
+              "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces"
+          elif [[ "$status" != "200" ]]; then
+            echo "Unexpected status from TFC: $status" >&2
+            exit 1
+          fi
+
+      - name: Set job outputs (vars)
+        id: set-outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          tf_workspace="nginx-plus-eks-$repo_name"
+          name_prefix="nginx-plus-one-eks-$repo_name"
+          cluster_name="$name_prefix"
+          ssh_cidr="0.0.0.0/0"
+          echo "tf_workspace=$tf_workspace" >> "$GITHUB_OUTPUT"
+          echo "name_prefix=$name_prefix" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=$cluster_name" >> "$GITHUB_OUTPUT"
+          echo "ssh_cidr=$ssh_cidr" >> "$GITHUB_OUTPUT"
+
+  terraform-plan-destroy:
+    needs: setup-tfc
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
+      NAME_PREFIX: ${{ needs.setup-tfc.outputs.name_prefix }}
+      CLUSTER_NAME: ${{ needs.setup-tfc.outputs.cluster_name }}
+      SSH_CIDR: ${{ needs.setup-tfc.outputs.ssh_cidr }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key (derive public key for Terraform)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
+            echo "Missing SSH_PRIVATE_KEY secret" >&2
+            exit 1
+          fi
+          printf '%s\n' "$SSH_PRIVATE_KEY" > /tmp/id_rsa
+          chmod 600 /tmp/id_rsa
+          ssh-keygen -y -f /tmp/id_rsa > /tmp/id_rsa.pub
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Terraform init
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          terraform init \
+            -backend-config="organization=$TFC_ORG"
+
+      - name: Terraform validate
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: terraform validate
+
+      - name: Terraform plan (destroy)
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          terraform plan -destroy -out=/tmp/tfdestroy \
+            -var="aws_region=$AWS_REGION" \
+            -var="name_prefix=$NAME_PREFIX" \
+            -var="cluster_name=$CLUSTER_NAME" \
+            -var="ssh_cidr=$SSH_CIDR" \
+            -var="ssh_public_key=$(cat /tmp/id_rsa.pub)"
+
+      - name: Save terraform destroy plan (JSON)
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          set -euo pipefail
+          terraform show -json /tmp/tfdestroy > /tmp/tfdestroy.json || true
+
+      - name: Upload terraform destroy plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eks-terraform-destroy-plan
+          path: |
+            /tmp/tfdestroy
+            /tmp/tfdestroy.json
+          if-no-files-found: error
+
+  terraform-destroy:
+    needs: [setup-tfc, terraform-plan-destroy]
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Download terraform destroy plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eks-terraform-destroy-plan
+          path: /tmp
+
+      - name: Terraform init
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          terraform init \
+            -backend-config="organization=$TFC_ORG"
+
+      - name: Terraform apply (destroy)
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: terraform apply -auto-approve /tmp/tfdestroy
