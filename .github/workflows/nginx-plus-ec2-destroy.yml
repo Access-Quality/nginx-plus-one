@@ -14,9 +14,20 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
+      SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Write SSH public key for Terraform
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSH_PUBLIC_KEY:-}" ]]; then
+            echo "Missing SSH_PUBLIC_KEY secret" >&2
+            exit 1
+          fi
+          printf '%s\n' "$SSH_PUBLIC_KEY" > /tmp/ssh_key.pub
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -33,7 +44,6 @@ jobs:
           echo "TF_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
           echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
           echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
-          ssh-keygen -t ed25519 -N "" -f /tmp/gha_ssh_key
 
       - name: Ensure TFC workspace
         shell: bash
@@ -67,4 +77,10 @@ jobs:
             -var="aws_region=$AWS_REGION" \
             -var="ssh_cidr=$SSH_CIDR" \
             -var="name_prefix=$NAME_PREFIX" \
-            -var="ssh_public_key=$(cat /tmp/gha_ssh_key.pub)"
+            -var="ssh_public_key=$(cat /tmp/ssh_key.pub)"
+
+      - name: Cleanup SSH public key file
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/ssh_key.pub || true
