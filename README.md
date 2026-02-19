@@ -119,4 +119,10 @@ If you don't see a block, check logs on the instance:
 sudo tail -n 200 /var/log/nginx/error.log | egrep -i "APP_PROTECT|app_protect|violation|blocked" || true
 ```
 
-# nginx-plus-one
+## Actualizar la política WAF
+
+Para usar una política WAF diferente, reemplaza el archivo scripts/cinex-policy.json con el contenido de la nueva política exportada desde la consola de NGINX One (F5 DCS).
+
+- Puedes descargar/exportar la política desde la consola de NGINX One (F5 DCS) en formato JSON.
+- Guarda ese contenido en scripts/cinex-policy.json antes de ejecutar el workflow de despliegue.
+- El pipeline copiará automáticamente la política a la instancia y la aplicará en NGINX Plus.
