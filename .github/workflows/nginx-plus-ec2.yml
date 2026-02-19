@@ -384,14 +384,14 @@ jobs:
             exit 1
           fi
 
-          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cine.json"
+          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cinex.json"
           ssh "ubuntu@${BASTION}" \
             "sudo mkdir -p /etc/nginx/app_protect/conf /etc/app_protect/conf && \
-             sudo cp /tmp/cine.json /etc/nginx/app_protect/conf/cine.json && \
-             sudo cp /tmp/cine.json /etc/app_protect/conf/cinex.json && \
-             sudo chown root:root /etc/nginx/app_protect/conf/cine.json /etc/app_protect/conf/cinex.json && \
-             sudo chmod 0644 /etc/nginx/app_protect/conf/cine.json /etc/app_protect/conf/cinex.json && \
-             rm -f /tmp/cine.json"
+             sudo cp /tmp/cinex.json /etc/nginx/app_protect/conf/cinex.json && \
+             sudo cp /tmp/cinex.json /etc/app_protect/conf/cinex.json && \
+             sudo chown root:root /etc/nginx/app_protect/conf/cinex.json /etc/app_protect/conf/cinex.json && \
+             sudo chmod 0644 /etc/nginx/app_protect/conf/cinex.json /etc/app_protect/conf/cinex.json && \
+             rm -f /tmp/cinex.json"
 
       - name: Configure NGINX hostnames for Cine apps
         run: |
