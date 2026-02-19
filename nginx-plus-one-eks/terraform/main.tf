@@ -3,8 +3,13 @@ resource "aws_eks_cluster" "this" {
   role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
-    subnet_ids = aws_subnet.eks[*].id
+    subnet_ids             = aws_subnet.eks[*].id
+    endpoint_public_access = true
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_AmazonEKSClusterPolicy,
+  ]
 }
 
 resource "aws_iam_role" "eks_cluster" {
@@ -30,6 +35,9 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_AmazonEKSClusterPolicy" {
 
 resource "aws_vpc" "eks" {
   cidr_block = "10.0.0.0/16"
+
+  enable_dns_support   = true
+  enable_dns_hostnames = true
 }
 
 resource "aws_internet_gateway" "eks" {
@@ -46,11 +54,16 @@ resource "aws_route_table" "eks_public" {
 }
 
 resource "aws_subnet" "eks" {
-  count             = 2
-  vpc_id            = aws_vpc.eks.id
-  cidr_block        = cidrsubnet(aws_vpc.eks.cidr_block, 8, count.index)
-  availability_zone = element(data.aws_availability_zones.available.names, count.index)
+  count                   = 2
+  vpc_id                  = aws_vpc.eks.id
+  cidr_block              = cidrsubnet(aws_vpc.eks.cidr_block, 8, count.index)
+  availability_zone       = element(data.aws_availability_zones.available.names, count.index)
   map_public_ip_on_launch = true
+
+  tags = {
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/elb"                    = "1"
+  }
 }
 
 resource "aws_route_table_association" "eks_public" {
@@ -72,10 +85,16 @@ resource "aws_eks_node_group" "default" {
     max_size     = var.desired_capacity + 1
     min_size     = 1
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_nodes_AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.eks_nodes_AmazonEC2ContainerRegistryReadOnly,
+    aws_iam_role_policy_attachment.eks_nodes_AmazonEKS_CNI_Policy,
+  ]
 }
 
 resource "aws_iam_role" "eks_nodes" {
-  name = "${var.cluster_name}-eks-nodes-role"
+  name               = "${var.cluster_name}-eks-nodes-role"
   assume_role_policy = data.aws_iam_policy_document.eks_nodes_assume_role.json
 }
 
