@@ -27,8 +27,22 @@ jobs:
             exit 1
           fi
 
-          # Typical format (per examples): https://<tenant>.console.ves.volterra.io/api
-          api_url="${XC_API_URL%/}"
+          # Typical format (per examples): https://<tenant>.console.ves.volterra.io/api/
+          # Normalize aggressively to avoid malformed URLs/hosts.
+          api_url_raw="$(printf '%s' "$XC_API_URL" | tr -d '\r\n')"
+          api_url="$api_url_raw"
+          if [[ "$api_url" != http://* && "$api_url" != https://* ]]; then
+            api_url="https://$api_url"
+          fi
+          # Ensure the base ends with /api/ (not just /api) to tolerate naive string concatenation.
+          if [[ "$api_url" == */api/* ]]; then
+            api_url="${api_url%%/api/*}/api/"
+          elif [[ "$api_url" == */api ]]; then
+            api_url="$api_url/"
+          else
+            api_url="${api_url%/}/api/"
+          fi
+          echo "Using XC API URL: $api_url"
 
           workdir="$(mktemp -d)"
           trap 'rm -rf "$workdir"' EXIT
