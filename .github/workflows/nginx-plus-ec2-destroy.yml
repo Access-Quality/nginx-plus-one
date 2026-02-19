@@ -1,0 +1,194 @@
+name: nginx-plus-ec2-destroy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  delete-waf-policy-cinex:
+    runs-on: ubuntu-latest
+    env:
+      XC_API_P12_FILE: ${{ secrets.XC_API_P12_FILE }}
+      XC_API_URL: ${{ secrets.XC_API_URL }}
+      VES_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
+      NGINX_ONE_NAMESPACE: default
+    steps:
+      - name: Delete NGINX One App Protect policy cinex
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${XC_API_P12_FILE:-}" || -z "${XC_API_URL:-}" || -z "${VES_P12_PASSWORD:-}" ]]; then
+            echo "Missing one or more required secrets: XC_API_P12_FILE, XC_API_URL, XC_P12_PASSWORD. Skipping policy delete." >&2
+            exit 0
+          fi
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
+
+          api_url_raw="$(printf '%s' "$XC_API_URL" | tr -d '\r\n')"
+          api_url="$api_url_raw"
+          if [[ "$api_url" != http://* && "$api_url" != https://* ]]; then
+            api_url="https://$api_url"
+          fi
+          if [[ "$api_url" == */api/* ]]; then
+            api_url="${api_url%%/api/*}/api"
+          elif [[ "$api_url" != */api ]]; then
+            api_url="${api_url%/}/api"
+          fi
+          echo "Using XC API URL: $api_url"
+
+          if ! printf '%s' "$XC_API_P12_FILE" | base64 --decode > api.p12 2>/dev/null; then
+            echo "XC_API_P12_FILE does not look like base64; writing it as-is to api.p12" >&2
+            printf '%s' "$XC_API_P12_FILE" > api.p12
+          fi
+
+          openssl_conf="$workdir/openssl.cnf"
+          cat > "$openssl_conf" <<'EOF'
+          openssl_conf = openssl_init
+
+          [openssl_init]
+          providers = provider_sect
+
+          [provider_sect]
+          default = default_sect
+          legacy = legacy_sect
+
+          [default_sect]
+          activate = 1
+
+          [legacy_sect]
+          activate = 1
+          EOF
+
+          export OPENSSL_CONF="$openssl_conf"
+          for d in /usr/lib/x86_64-linux-gnu/ossl-modules /usr/lib/ssl/ossl-modules /usr/local/lib/ossl-modules; do
+            if [[ -d "$d" ]]; then
+              export OPENSSL_MODULES="$d"
+              break
+            fi
+          done
+
+          if ! openssl pkcs12 -in api.p12 -passin pass:"$VES_P12_PASSWORD" -nodes -nokeys >/dev/null 2>&1; then
+            echo "Failed to read PKCS#12 bundle (api.p12). Skipping policy delete." >&2
+            exit 0
+          fi
+
+          nginx_one_base_url="${api_url%/}/nginx/one/namespaces/${NGINX_ONE_NAMESPACE}"
+          policies_url="${nginx_one_base_url}/app-protect/policies"
+          echo "Using NGINX One policies URL: ${policies_url}"
+
+          existing_json="$workdir/existing.json"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            --get \
+            --data-urlencode "paginated=false" \
+            --data-urlencode "filter_fields=name" \
+            --data-urlencode "filter_ops=IN" \
+            --data-urlencode "filter_values=cinex" \
+            "${policies_url}" \
+            > "$existing_json" || true
+
+          policy_object_id=""
+          if [[ -f "$existing_json" ]]; then
+            policy_object_id="$(python3 -c 'import json,sys; data=json.load(open(sys.argv[1],"r",encoding="utf-8")); items=data.get("items") or []; print(next((i.get("object_id","") for i in items if i.get("name")=="cinex"), ""))' "$existing_json" 2>/dev/null || true)"
+          fi
+
+          if [[ -z "$policy_object_id" ]]; then
+            echo "Policy 'cinex' not found; nothing to delete."
+            exit 0
+          fi
+
+          echo "Deleting policy 'cinex' (object_id=$policy_object_id)"
+          curl -fsS \
+            --cert-type P12 \
+            --cert "./api.p12:${VES_P12_PASSWORD}" \
+            -X DELETE \
+            "${policies_url}/${policy_object_id}" \
+            > /tmp/nginx-one-cinex-delete.json || true
+
+          echo "Delete response (if any):"
+          cat /tmp/nginx-one-cinex-delete.json 2>/dev/null || true
+
+  destroy:
+    needs: delete-waf-policy-cinex
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORG: ${{ secrets.TFC_ORG }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write SSH public key for Terraform
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSH_PUBLIC_KEY:-}" ]]; then
+            echo "Missing SSH_PUBLIC_KEY secret" >&2
+            exit 1
+          fi
+          printf '%s\n' "$SSH_PUBLIC_KEY" > /tmp/ssh_key.pub
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+
+      - name: Set dynamic vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          echo "TFC_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
+          echo "TF_WORKSPACE=nginx-plus-ec2-$repo_name" >> "$GITHUB_ENV"
+          echo "NAME_PREFIX=nginx-plus-$repo_name" >> "$GITHUB_ENV"
+          echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
+
+      - name: Ensure TFC workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TFC_TOKEN" \
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+
+          if [[ "$status" == "404" ]]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $TFC_TOKEN" \
+              -H "Content-Type: application/vnd.api+json" \
+              -d "{\"data\":{\"type\":\"workspaces\",\"attributes\":{\"name\":\"$TFC_WORKSPACE\",\"execution-mode\":\"local\"}}}" \
+              "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces"
+          elif [[ "$status" != "200" ]]; then
+            echo "Unexpected status from TFC: $status" >&2
+            exit 1
+          fi
+
+      - name: Terraform init
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          terraform init \
+            -backend-config="organization=$TFC_ORG"
+
+      - name: Terraform destroy
+        working-directory: terraform/nginx-plus-ec2
+        run: |
+          terraform destroy -auto-approve \
+            -var="aws_region=$AWS_REGION" \
+            -var="ssh_cidr=$SSH_CIDR" \
+            -var="name_prefix=$NAME_PREFIX" \
+            -var="ssh_public_key=$(cat /tmp/ssh_key.pub)"
+
+      - name: Cleanup SSH public key file
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/ssh_key.pub || true
