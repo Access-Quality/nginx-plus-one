@@ -1,124 +1,70 @@
-resource "aws_eks_cluster" "this" {
-  name     = var.cluster_name
-  role_arn = aws_iam_role.eks_cluster.arn
-
-  vpc_config {
-    subnet_ids             = aws_subnet.eks[*].id
-    endpoint_public_access = true
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_AmazonEKSClusterPolicy,
-  ]
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
-resource "aws_iam_role" "eks_cluster" {
-  name = "${var.cluster_name}-eks-cluster-role"
-
-  assume_role_policy = data.aws_iam_policy_document.eks_assume_role.json
+locals {
+  azs = slice(
+    data.aws_availability_zones.available.names,
+    0,
+    min(3, length(data.aws_availability_zones.available.names))
+  )
 }
 
-data "aws_iam_policy_document" "eks_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["eks.amazonaws.com"]
-    }
-  }
-}
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.5.1"
 
-resource "aws_iam_role_policy_attachment" "eks_cluster_AmazonEKSClusterPolicy" {
-  role       = aws_iam_role.eks_cluster.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-}
+  name = "${var.cluster_name}-vpc"
+  cidr = var.vpc_cidr
 
-resource "aws_vpc" "eks" {
-  cidr_block = "10.0.0.0/16"
+  azs             = local.azs
+  private_subnets = [for i in range(length(local.azs)) : cidrsubnet(var.vpc_cidr, 4, i)]
+  public_subnets  = [for i in range(length(local.azs)) : cidrsubnet(var.vpc_cidr, 4, i + 4)]
 
-  enable_dns_support   = true
+  enable_nat_gateway = true
+  single_nat_gateway = true
+
   enable_dns_hostnames = true
-}
+  enable_dns_support   = true
 
-resource "aws_internet_gateway" "eks" {
-  vpc_id = aws_vpc.eks.id
-}
-
-resource "aws_route_table" "eks_public" {
-  vpc_id = aws_vpc.eks.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.eks.id
-  }
-}
-
-resource "aws_subnet" "eks" {
-  count                   = 2
-  vpc_id                  = aws_vpc.eks.id
-  cidr_block              = cidrsubnet(aws_vpc.eks.cidr_block, 8, count.index)
-  availability_zone       = element(data.aws_availability_zones.available.names, count.index)
-  map_public_ip_on_launch = true
-
-  tags = {
+  public_subnet_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/elb"                    = "1"
   }
-}
 
-resource "aws_route_table_association" "eks_public" {
-  count          = 2
-  subnet_id      = aws_subnet.eks[count.index].id
-  route_table_id = aws_route_table.eks_public.id
-}
-
-data "aws_availability_zones" "available" {}
-
-resource "aws_eks_node_group" "default" {
-  cluster_name    = aws_eks_cluster.this.name
-  node_group_name = "default"
-  node_role_arn   = aws_iam_role.eks_nodes.arn
-  subnet_ids      = aws_subnet.eks[*].id
-  instance_types  = [var.node_instance_type]
-  scaling_config {
-    desired_size = var.desired_capacity
-    max_size     = var.desired_capacity + 1
-    min_size     = 1
+  private_subnet_tags = {
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/internal-elb"           = "1"
   }
 
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_nodes_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.eks_nodes_AmazonEC2ContainerRegistryReadOnly,
-    aws_iam_role_policy_attachment.eks_nodes_AmazonEKS_CNI_Policy,
-  ]
+  tags = var.tags
 }
 
-resource "aws_iam_role" "eks_nodes" {
-  name               = "${var.cluster_name}-eks-nodes-role"
-  assume_role_policy = data.aws_iam_policy_document.eks_nodes_assume_role.json
-}
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "20.24.0"
 
-data "aws_iam_policy_document" "eks_nodes_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ec2.amazonaws.com"]
+  cluster_name    = var.cluster_name
+  cluster_version = var.kubernetes_version
+
+  cluster_endpoint_public_access       = var.cluster_endpoint_public_access
+  cluster_endpoint_private_access      = var.cluster_endpoint_private_access
+  cluster_endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  enable_irsa                              = true
+  enable_cluster_creator_admin_permissions = true
+
+  eks_managed_node_groups = {
+    default = {
+      instance_types = var.instance_types
+      min_size       = var.min_size
+      max_size       = var.max_size
+      desired_size   = var.desired_size
     }
   }
-}
 
-resource "aws_iam_role_policy_attachment" "eks_nodes_AmazonEKSWorkerNodePolicy" {
-  role       = aws_iam_role.eks_nodes.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-}
-
-resource "aws_iam_role_policy_attachment" "eks_nodes_AmazonEC2ContainerRegistryReadOnly" {
-  role       = aws_iam_role.eks_nodes.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_iam_role_policy_attachment" "eks_nodes_AmazonEKS_CNI_Policy" {
-  role       = aws_iam_role.eks_nodes.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  tags = var.tags
 }

@@ -12,3 +12,10 @@
 !/.github/**
 !/terraform/**
 !/scripts/**
+
+# Terraform local artifacts
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/crash.log
+**/*.tfplan
