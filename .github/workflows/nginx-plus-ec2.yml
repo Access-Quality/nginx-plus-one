@@ -427,7 +427,7 @@ jobs:
           sudo systemctl restart nginx-agent || true
           EOF
 
-      - name: Fail if NGINX welcome page is served
+      - name: Ensure NGINX is not serving welcome page
         run: |
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
@@ -435,25 +435,62 @@ jobs:
           ssh "ubuntu@${BASTION}" 'bash -s' <<'EOF'
           set -euo pipefail
 
-          check_welcome() {
-            local host="${1:-}"
-            local body
+          if [[ ! -f /etc/nginx/conf.d/cine.conf ]]; then
+            echo "ERROR: /etc/nginx/conf.d/cine.conf missing" >&2
+            exit 1
+          fi
 
-            if [[ -n "$host" ]]; then
-              body="$(curl -fsS -H "Host: $host" http://127.0.0.1/ || true)"
-            else
-              body="$(curl -fsS http://127.0.0.1/ || true)"
-            fi
+          disable_default_html_vhosts() {
+            for f in /etc/nginx/conf.d/*.conf; do
+              [[ -e "$f" ]] || continue
+              [[ "$f" == "/etc/nginx/conf.d/cine.conf" ]] && continue
 
-            if printf '%s' "$body" | grep -qi "Welcome to nginx"; then
-              echo "ERROR: NGINX welcome page is being served (host=${host:-<none>})" >&2
-              exit 1
-            fi
+              # If a conf looks like the default welcome vhost, disable it.
+              if grep -Eq 'root\s+/usr/share/nginx/html;|Welcome to nginx!|index\s+index\.html' "$f"; then
+                echo "Disabling competing default HTML vhost: $f" >&2
+                sudo mv "$f" "${f}.disabled" || true
+              fi
+            done
           }
 
-          check_welcome ""
-          check_welcome "cine.example.com"
-          check_welcome "cine-tmdb.example.com"
+          check_no_welcome() {
+            local host="${1:-}"
+            local tmp
+            tmp="$(mktemp)"
+
+            if [[ -n "$host" ]]; then
+              curl -fsS -H "Host: $host" http://127.0.0.1/ -o "$tmp"
+            else
+              curl -fsS http://127.0.0.1/ -o "$tmp"
+            fi
+
+            if grep -qi "Welcome to nginx" "$tmp"; then
+              rm -f "$tmp" || true
+              echo "ERROR: NGINX welcome page is being served (host=${host:-<none>})" >&2
+              return 1
+            fi
+
+            rm -f "$tmp" || true
+          }
+
+          # Retry a few times; if welcome page appears, restart NGINX and try again.
+          for attempt in {1..6}; do
+            if check_no_welcome "" && check_no_welcome "cine.example.com" && check_no_welcome "cine-tmdb.example.com"; then
+              echo "NGINX is serving Cine vhosts (no welcome page)."
+              exit 0
+            fi
+
+            echo "Welcome page detected; attempting remediation (attempt ${attempt}/6)" >&2
+            disable_default_html_vhosts
+            sudo nginx -t
+            sudo systemctl restart nginx
+            sleep 2
+          done
+
+          echo "ERROR: Welcome page still being served after retries" >&2
+          echo "--- Active listen 80 blocks ---" >&2
+          sudo nginx -T 2>&1 | grep -nE 'configuration file|server\s*\{|listen\s+80|default_server|server_name|root\s+|index\s+' | sed -n '1,220p' >&2
+          exit 1
           EOF
 
       - name: Validate WAF installation and runtime
