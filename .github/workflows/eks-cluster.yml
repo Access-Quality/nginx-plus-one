@@ -33,10 +33,17 @@ jobs:
         run: |
           set -euo pipefail
           repo_name="${GITHUB_REPOSITORY##*/}"
-          echo "TFC_WORKSPACE=nginx-plus-eks-$repo_name" >> "$GITHUB_ENV"
-          echo "TF_WORKSPACE=nginx-plus-eks-$repo_name" >> "$GITHUB_ENV"
-          echo "NAME_PREFIX=nginx-plus-one-eks-$repo_name" >> "$GITHUB_ENV"
-          echo "CLUSTER_NAME=nginx-plus-one-eks-$repo_name" >> "$GITHUB_ENV"
+          safe_repo_name="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+          base="${safe_repo_name:0:14}"
+          suffix="$(printf '%s' "$GITHUB_REPOSITORY" | shasum | awk '{print $1}' | cut -c1-6)"
+
+          tfc_ws="nginx-plus-eks-$repo_name"
+          name_prefix="eks-${base}-${suffix}"
+
+          echo "TFC_WORKSPACE=$tfc_ws" >> "$GITHUB_ENV"
+          echo "TF_WORKSPACE=$tfc_ws" >> "$GITHUB_ENV"
+          echo "NAME_PREFIX=$name_prefix" >> "$GITHUB_ENV"
+          echo "CLUSTER_NAME=$name_prefix" >> "$GITHUB_ENV"
           echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
 
       - name: Ensure TFC workspace
@@ -70,8 +77,12 @@ jobs:
         run: |
           set -euo pipefail
           repo_name="${GITHUB_REPOSITORY##*/}"
+          safe_repo_name="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+          base="${safe_repo_name:0:14}"
+          suffix="$(printf '%s' "$GITHUB_REPOSITORY" | shasum | awk '{print $1}' | cut -c1-6)"
+
           tf_workspace="nginx-plus-eks-$repo_name"
-          name_prefix="nginx-plus-one-eks-$repo_name"
+          name_prefix="eks-${base}-${suffix}"
           cluster_name="$name_prefix"
           ssh_cidr="0.0.0.0/0"
           echo "tf_workspace=$tf_workspace" >> "$GITHUB_OUTPUT"

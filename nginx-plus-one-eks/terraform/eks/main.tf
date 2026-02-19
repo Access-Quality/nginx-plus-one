@@ -3,6 +3,9 @@ locals {
   tags = merge(var.tags, {
     Project = var.name_prefix
   })
+
+  cluster_iam_role_name = substr("${var.cluster_name}-cluster-role", 0, 64)
+  node_iam_role_name    = substr("${var.cluster_name}-ng-role", 0, 64)
 }
 
 module "vpc" {
@@ -77,6 +80,9 @@ module "eks" {
 
   enable_cluster_creator_admin_permissions = true
 
+  iam_role_use_name_prefix = false
+  iam_role_name            = local.cluster_iam_role_name
+
   eks_managed_node_groups = {
     default = {
       name           = "${var.name_prefix}-ng"
@@ -90,6 +96,9 @@ module "eks" {
         ec2_ssh_key               = aws_key_pair.eks.key_name
         source_security_group_ids = [aws_security_group.node_ssh.id]
       }
+
+      iam_role_use_name_prefix = false
+      iam_role_name            = local.node_iam_role_name
     }
   }
 
