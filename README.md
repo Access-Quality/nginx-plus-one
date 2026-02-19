@@ -96,4 +96,27 @@ systemctl status nginx --no-pager
 systemctl status nginx-agent --no-pager
 curl -I http://localhost
 ```
+
+## WAF blocking tests
+
+Use the instance public IP plus an explicit `Host` header.
+
+Test 1 (should pass):
+
+```bash
+curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/"
+```
+
+Test 2 (should be blocked):
+
+```bash
+curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/?id=1%20OR%201%3D1--"
+```
+
+If you don't see a block, check logs on the instance:
+
+```bash
+sudo tail -n 200 /var/log/nginx/error.log | egrep -i "APP_PROTECT|app_protect|violation|blocked" || true
+```
+
 # nginx-plus-one
