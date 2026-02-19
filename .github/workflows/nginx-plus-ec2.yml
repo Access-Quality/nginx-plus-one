@@ -46,6 +46,40 @@ jobs:
             printf '%s' "$XC_API_P12_FILE" > api.p12
           fi
 
+          # GitHub's ubuntu runners use OpenSSL 3, which may reject legacy-encrypted PKCS#12 bundles
+          # unless the legacy provider is enabled.
+          openssl_conf="$workdir/openssl.cnf"
+          cat > "$openssl_conf" <<'EOF'
+          openssl_conf = openssl_init
+
+          [openssl_init]
+          providers = provider_sect
+
+          [provider_sect]
+          default = default_sect
+          legacy = legacy_sect
+
+          [default_sect]
+          activate = 1
+
+          [legacy_sect]
+          activate = 1
+          EOF
+
+          export OPENSSL_CONF="$openssl_conf"
+          for d in /usr/lib/x86_64-linux-gnu/ossl-modules /usr/lib/ssl/ossl-modules /usr/local/lib/ossl-modules; do
+            if [[ -d "$d" ]]; then
+              export OPENSSL_MODULES="$d"
+              break
+            fi
+          done
+
+          # Validate that OpenSSL can read the PKCS#12 bundle with the provided password
+          if ! openssl pkcs12 -in api.p12 -passin pass:"$VES_P12_PASSWORD" -nodes -nokeys >/dev/null 2>&1; then
+            echo "Failed to read PKCS#12 bundle (api.p12). Check XC_P12_PASSWORD, or regenerate the P12 using modern encryption (or use an API token)." >&2
+            exit 1
+          fi
+
           # NGINX One API base (OpenAPI): https://{tenant}.console.ves.volterra.io/api/nginx/one/namespaces/{namespace}
           nginx_one_base_url="${api_url%/}/nginx/one/namespaces/${NGINX_ONE_NAMESPACE}"
           policies_url="${nginx_one_base_url}/app-protect/policies"
