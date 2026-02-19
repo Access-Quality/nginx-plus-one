@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hola-cine
+  namespace: cine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hola-cine
+  template:
+    metadata:
+      labels:
+        app: hola-cine
+    spec:
+      containers:
+        - name: hola-cine
+          image: node:20-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          command:
+            - node
+            - -e
+            - |
+              const http = require('http');
+              const port = process.env.PORT || 3000;
+              const server = http.createServer((req, res) => {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+                res.end('hola cine\n');
+              });
+              server.listen(port, '0.0.0.0', () => console.log(`listening on ${port}`));
+          env:
+            - name: PORT
+              value: "3000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hola-cine
+  namespace: cine
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  type: LoadBalancer
+  selector:
+    app: hola-cine
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

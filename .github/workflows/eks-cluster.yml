@@ -211,3 +211,44 @@ jobs:
           echo "cluster_name=$(terraform output -raw cluster_name)"
           echo "cluster_region=$(terraform output -raw cluster_region)"
           echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29.0
+
+      - name: Configure kubeconfig
+        shell: bash
+        working-directory: nginx-plus-one-eks/terraform/eks
+        run: |
+          set -euo pipefail
+          cluster_name="$(terraform output -raw cluster_name)"
+          aws eks update-kubeconfig --name "$cluster_name" --region "$AWS_REGION"
+
+      - name: Deploy hola-cine app
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f nginx-plus-one-eks/k8s/hola-cine/
+          kubectl -n cine rollout status deploy/hola-cine --timeout=10m
+
+      - name: Wait for public URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..60}; do
+            host="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            ip="$(kubectl -n cine get svc hola-cine -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            if [[ -n "$host" ]]; then
+              echo "PUBLIC_URL=http://$host/"
+              exit 0
+            fi
+            if [[ -n "$ip" ]]; then
+              echo "PUBLIC_URL=http://$ip/"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for Service LoadBalancer address" >&2
+          kubectl -n cine get svc hola-cine -o yaml || true
+          exit 1
