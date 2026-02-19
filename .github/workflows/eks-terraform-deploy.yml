@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: eks-terraform-deploy
+  group: eks-terraform-cluster
   cancel-in-progress: false
 
 jobs:
@@ -130,7 +130,7 @@ jobs:
 
       - name: Terraform Plan
         working-directory: nginx-plus-one-eks/terraform
-        run: terraform plan -no-color -out=tfplan -var="aws_region=$AWS_REGION"
+        run: terraform plan -no-color -lock-timeout=20m -out=tfplan -var="aws_region=$AWS_REGION"
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
@@ -196,7 +196,7 @@ jobs:
 
       - name: Terraform Apply
         working-directory: nginx-plus-one-eks/terraform
-        run: terraform apply -no-color -auto-approve tfplan
+        run: terraform apply -no-color -lock-timeout=20m -auto-approve tfplan
 
       - name: Cleanup SSH key
         if: always()
