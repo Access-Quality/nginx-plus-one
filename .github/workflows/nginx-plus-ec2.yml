@@ -402,7 +402,7 @@ jobs:
           cp scripts/cine-nginx.conf /tmp/cine-nginx.conf
           sed -i "s/CINE_IP_PLACEHOLDER/${CINE_PRIVATE}/g" /tmp/cine-nginx.conf
           scp /tmp/cine-nginx.conf "ubuntu@${BASTION}:/tmp/cine-nginx.conf"
-          ssh "ubuntu@${BASTION}" "sudo rm -f /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/default || true; sudo mv /tmp/cine-nginx.conf /etc/nginx/conf.d/cine.conf && sudo nginx -t && sudo systemctl reload nginx"
+          ssh "ubuntu@${BASTION}" "sudo rm -f /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/default || true; sudo mv /tmp/cine-nginx.conf /etc/nginx/conf.d/cine.conf && sudo chown root:root /etc/nginx/conf.d/cine.conf && sudo chmod 0644 /etc/nginx/conf.d/cine.conf && sudo nginx -t && sudo systemctl reload nginx && sudo systemctl restart nginx-agent || true"
 
       - name: Validate WAF installation and runtime
         run: |
