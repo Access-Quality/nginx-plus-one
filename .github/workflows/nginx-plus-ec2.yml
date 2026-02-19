@@ -353,6 +353,19 @@ jobs:
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
+      - name: Upload cinex policy file to App Protect
+        run: |
+          set -euo pipefail
+          BASTION="${{ needs.terraform.outputs.public_ip }}"
+          if [[ ! -f scripts/cinex-policy.json ]]; then
+            echo "Missing local policy file: scripts/cinex-policy.json" >&2
+            exit 1
+          fi
+
+          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cinex.json"
+          ssh "ubuntu@${BASTION}" \
+            "sudo mkdir -p /etc/app_protect/conf && sudo mv /tmp/cinex.json /etc/app_protect/conf/cinex.json && sudo chown root:root /etc/app_protect/conf/cinex.json && sudo chmod 0644 /etc/app_protect/conf/cinex.json"
+
       - name: Configure NGINX hostnames for Cine apps
         run: |
           set -euo pipefail
