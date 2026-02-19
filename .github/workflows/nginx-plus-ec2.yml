@@ -12,7 +12,12 @@ jobs:
       XC_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
       XC_NAMESPACE: default
     steps:
-      - name: Create WAF policy cinex (transparent)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Create WAF policy cinex (transparent/monitoring)
         shell: bash
         run: |
           set -euo pipefail
@@ -22,68 +27,60 @@ jobs:
             exit 1
           fi
 
+          # Typical format (per examples): https://<tenant>.console.ves.volterra.io/api
+          api_url="${XC_API_URL%/}"
+
           workdir="$(mktemp -d)"
           trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
 
-          p12_file="$workdir/xc-api.p12"
-          printf '%s' "$XC_API_P12_FILE" > "$workdir/xc-api.p12.b64"
-
-          if base64 --decode "$workdir/xc-api.p12.b64" > "$p12_file" 2>/dev/null; then
-            :
-          else
-            # If the secret is not base64-encoded, treat it as raw content.
-            cp "$workdir/xc-api.p12.b64" "$p12_file"
+          # XC_API_P12_FILE is expected to be base64-encoded.
+          if ! printf '%s' "$XC_API_P12_FILE" | base64 --decode > api.p12 2>/dev/null; then
+            echo "XC_API_P12_FILE does not look like base64; writing it as-is to api.p12" >&2
+            printf '%s' "$XC_API_P12_FILE" > api.p12
           fi
 
-          cert_file="$workdir/xc-client.crt"
-          key_file="$workdir/xc-client.key"
+          # Volterra provider uses VES_P12_PASSWORD for the P12 password.
+          export VES_P12_PASSWORD="$XC_P12_PASSWORD"
+          export TF_IN_AUTOMATION=1
+          export TF_INPUT=0
 
-          if ! openssl pkcs12 -in "$p12_file" -clcerts -nokeys -out "$cert_file" -passin pass:"$XC_P12_PASSWORD"; then
-            openssl pkcs12 -legacy -in "$p12_file" -clcerts -nokeys -out "$cert_file" -passin pass:"$XC_P12_PASSWORD"
-          fi
-
-          if ! openssl pkcs12 -in "$p12_file" -nocerts -nodes -out "$key_file" -passin pass:"$XC_P12_PASSWORD"; then
-            openssl pkcs12 -legacy -in "$p12_file" -nocerts -nodes -out "$key_file" -passin pass:"$XC_P12_PASSWORD"
-          fi
-          chmod 600 "$key_file"
-
-          policy_file="$workdir/cinex.json"
-          cat > "$policy_file" <<'JSON'
-          {
-            "policy": {
-              "name": "cinex",
-              "template": { "name": "POLICY_TEMPLATE_NGINX_BASE" },
-              "applicationLanguage": "utf-8",
-              "enforcementMode": "transparent"
+          cat > main.tf <<'HCL'
+          terraform {
+            required_providers {
+              volterra = {
+                source  = "volterraedge/volterra"
+                version = ">= 0.11.34"
+              }
             }
           }
-          JSON
 
-          response_file="$workdir/response.json"
-          http_code=""
-          for method in POST PUT; do
-            http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
-              --cert "$cert_file" --key "$key_file" \
-              -H "Content-Type: application/json" \
-              -X "$method" "$XC_API_URL" \
-              --data-binary "@$policy_file" || true)
+          variable "xc_api_url" { type = string }
+          variable "xc_namespace" { type = string }
 
-            # Success codes: 2xx, or 409 if resource already exists.
-            if [[ "$http_code" =~ ^2[0-9][0-9]$ || "$http_code" == "409" ]]; then
-              echo "WAF policy request succeeded (HTTP $http_code)"
-              cat "$response_file" || true
-              exit 0
-            fi
+          provider "volterra" {
+            api_p12_file = "${path.module}/api.p12"
+            url          = var.xc_api_url
+          }
 
-            # If POST is not allowed, try PUT.
-            if [[ "$method" == "POST" && "$http_code" == "405" ]]; then
-              continue
-            fi
+          # "Transparent" = non-blocking (monitoring). Provider uses `blocking = false`.
+          resource "volterra_app_firewall" "cinex" {
+            name                     = "cinex"
+            namespace                = var.xc_namespace
+            allow_all_response_codes  = true
+            default_anonymization     = true
+            use_default_blocking_page = true
+            default_bot_setting       = true
+            default_detection_settings= true
+            use_loadbalancer_setting  = true
+            blocking                  = false
+          }
+          HCL
 
-            echo "WAF policy request failed (HTTP $http_code) using $method" >&2
-            cat "$response_file" >&2 || true
-            exit 1
-          done
+          terraform init -no-color
+          terraform apply -auto-approve -no-color \
+            -var="xc_api_url=$api_url" \
+            -var="xc_namespace=$XC_NAMESPACE"
 
   setup-tfc:
     runs-on: ubuntu-latest
