@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.3.0"
   backend "remote" {
-    organization = var.tfc_org
+    organization = "${TFC_ORG}"
     workspaces {
       name = "eks-cluster"
     }

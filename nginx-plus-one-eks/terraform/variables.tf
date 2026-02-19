@@ -3,12 +3,6 @@ variable "aws_region" {
   type        = string
 }
 
-variable "tfc_org" {
-  description = "Terraform Cloud organization"
-  type        = string
-  default     = "${env.TFC_ORG}"
-}
-
 variable "cluster_name" {
   description = "EKS cluster name"
   type        = string

@@ -31,7 +31,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: nginx-plus-one-eks/terraform
-        run: terraform init -backend-config="organization=$TFC_ORG" -backend-config="workspaces.name=eks-cluster"
+        run: terraform init -backend-config="organization=$TFC_ORG"
 
       - name: Terraform Plan
         working-directory: nginx-plus-one-eks/terraform
