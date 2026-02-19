@@ -271,7 +271,7 @@ jobs:
 
           kubectl apply -f nginx-plus-one-eks/k8s/cine/app.yaml
 
-          if ! kubectl -n cine rollout status deploy/cine --timeout=15m; then
+          if ! kubectl -n cine rollout status deploy/cine --timeout=8m; then
             echo "Rollout did not complete; attempting to force-delete terminating pods and retry..." >&2
             terminating_pods="$(kubectl -n cine get pods -l app=cine -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
             if [[ -n "$terminating_pods" ]]; then
@@ -282,7 +282,7 @@ jobs:
               done
             fi
             # Retry once
-            if kubectl -n cine rollout status deploy/cine --timeout=10m; then
+            if kubectl -n cine rollout status deploy/cine --timeout=12m; then
               exit 0
             fi
             echo "--- deploy/cine describe ---" >&2
