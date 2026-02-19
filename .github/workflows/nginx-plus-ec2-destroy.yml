@@ -173,13 +173,13 @@ jobs:
           fi
 
       - name: Terraform init
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           terraform init \
             -backend-config="organization=$TFC_ORG"
 
       - name: Terraform destroy
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           terraform destroy -auto-approve \
             -var="aws_region=$AWS_REGION" \

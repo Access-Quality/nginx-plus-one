@@ -88,7 +88,7 @@ jobs:
           policies_url="${nginx_one_base_url}/app-protect/policies"
           echo "Using NGINX One policies URL: ${policies_url}"
 
-          policy_src="${GITHUB_WORKSPACE}/scripts/cinex-policy.json"
+          policy_src="${GITHUB_WORKSPACE}/nginx-plus-one-vm/scripts/cinex-policy.json"
           if [[ ! -f "$policy_src" ]]; then
             echo "Missing policy file: $policy_src" >&2
             exit 1
@@ -245,13 +245,13 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
 
       - name: Terraform init
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           terraform init \
             -backend-config="organization=$TFC_ORG"
 
       - name: Terraform plan
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           terraform plan -out=/tmp/tfplan \
             -var="aws_region=$AWS_REGION" \
@@ -260,7 +260,7 @@ jobs:
             -var="ssh_public_key=$(cat /tmp/ssh_key.pub)"
 
       - name: Save terraform plan (JSON)
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           set -euo pipefail
           terraform show -json /tmp/tfplan > /tmp/tfplan.json || true
@@ -273,13 +273,13 @@ jobs:
           if-no-files-found: warn
 
       - name: Terraform apply
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           terraform apply -auto-approve /tmp/tfplan
 
       - name: Get instance IP
         id: ip
-        working-directory: terraform/nginx-plus-ec2
+        working-directory: nginx-plus-one-vm/terraform/nginx-plus-ec2
         run: |
           echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
           echo "cine_private_ip=$(terraform output -raw cine_private_ip)" >> "$GITHUB_OUTPUT"
@@ -371,7 +371,7 @@ jobs:
 
       - name: Install NGINX Plus + WAF + Agent
         run: |
-          scp scripts/install-nginx-plus.sh ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/install-nginx-plus.sh
+          scp nginx-plus-one-vm/scripts/install-nginx-plus.sh ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/install-nginx-plus.sh
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
             "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
@@ -379,12 +379,12 @@ jobs:
         run: |
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
-          if [[ ! -f scripts/cinex-policy.json ]]; then
-            echo "Missing local policy file: scripts/cinex-policy.json" >&2
+          if [[ ! -f nginx-plus-one-vm/scripts/cinex-policy.json ]]; then
+            echo "Missing local policy file: nginx-plus-one-vm/scripts/cinex-policy.json" >&2
             exit 1
           fi
 
-          scp scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cinex.json"
+          scp nginx-plus-one-vm/scripts/cinex-policy.json "ubuntu@${BASTION}:/tmp/cinex.json"
           ssh "ubuntu@${BASTION}" \
             "sudo mkdir -p /etc/nginx/app_protect/conf /etc/app_protect/conf && \
              sudo cp /tmp/cinex.json /etc/nginx/app_protect/conf/cinex.json && \
@@ -398,7 +398,7 @@ jobs:
           set -euo pipefail
           BASTION="${{ needs.terraform.outputs.public_ip }}"
           CINE_PRIVATE="${{ needs.terraform.outputs.cine_private_ip }}"
-          cp scripts/cine-nginx.conf /tmp/cine-nginx.conf
+          cp nginx-plus-one-vm/scripts/cine-nginx.conf /tmp/cine-nginx.conf
           sed -i "s/CINE_IP_PLACEHOLDER/${CINE_PRIVATE}/g" /tmp/cine-nginx.conf
           scp /tmp/cine-nginx.conf "ubuntu@${BASTION}:/tmp/cine-nginx.conf"
           ssh "ubuntu@${BASTION}" 'bash -s' <<'EOF'
@@ -561,15 +561,15 @@ jobs:
 
       - name: Validate OMDB app syntax
         run: |
-          node --check scripts/cine-app.js
+          node --check nginx-plus-one-vm/scripts/cine-app.js
 
       - name: Upload OMDB app artifact
         uses: actions/upload-artifact@v4
         with:
           name: cine-omdb-bundle
           path: |
-            scripts/cine-app.js
-            scripts/cine.service
+            nginx-plus-one-vm/scripts/cine-app.js
+            nginx-plus-one-vm/scripts/cine.service
 
   build-cine-tmdb:
     runs-on: ubuntu-latest
@@ -579,15 +579,15 @@ jobs:
 
       - name: Validate TMDB app syntax
         run: |
-          node --check scripts/cine-tmdb-app.js
+          node --check nginx-plus-one-vm/scripts/cine-tmdb-app.js
 
       - name: Upload TMDB app artifact
         uses: actions/upload-artifact@v4
         with:
           name: cine-tmdb-bundle
           path: |
-            scripts/cine-tmdb-app.js
-            scripts/cine-tmdb.service
+            nginx-plus-one-vm/scripts/cine-tmdb-app.js
+            nginx-plus-one-vm/scripts/cine-tmdb.service
 
   deploy-cine:
     needs: [terraform, setup-tfc, install, build-cine-omdb, build-cine-tmdb, create-waf-policy-cinex]
