@@ -431,3 +431,79 @@ jobs:
           else
             rm -f ~/.ssh/id_rsa || true
           fi
+
+  create-waf-policy-cinex:
+    needs: [install]
+    runs-on: ubuntu-latest
+    env:
+      XC_API_P12_FILE: ${{ secrets.XC_API_P12_FILE }}
+      XC_API_URL: ${{ secrets.XC_API_URL }}
+      XC_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
+      XC_NAMESPACE: default
+    steps:
+      - name: Create WAF policy cinex (transparent)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${XC_API_P12_FILE:-}" || -z "${XC_API_URL:-}" || -z "${XC_P12_PASSWORD:-}" ]]; then
+            echo "Missing one or more required secrets: XC_API_P12_FILE, XC_API_URL, XC_P12_PASSWORD" >&2
+            exit 1
+          fi
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+
+          p12_file="$workdir/xc-api.p12"
+          printf '%s' "$XC_API_P12_FILE" > "$workdir/xc-api.p12.b64"
+
+          if base64 --decode "$workdir/xc-api.p12.b64" > "$p12_file" 2>/dev/null; then
+            :
+          else
+            # If the secret is not base64-encoded, treat it as raw content.
+            cp "$workdir/xc-api.p12.b64" "$p12_file"
+          fi
+
+          cert_file="$workdir/xc-client.crt"
+          key_file="$workdir/xc-client.key"
+          openssl pkcs12 -in "$p12_file" -clcerts -nokeys -out "$cert_file" -passin pass:"$XC_P12_PASSWORD"
+          openssl pkcs12 -in "$p12_file" -nocerts -nodes -out "$key_file" -passin pass:"$XC_P12_PASSWORD"
+          chmod 600 "$key_file"
+
+          policy_file="$workdir/cinex.json"
+          cat > "$policy_file" <<'JSON'
+          {
+            "policy": {
+              "name": "cinex",
+              "template": { "name": "POLICY_TEMPLATE_NGINX_BASE" },
+              "applicationLanguage": "utf-8",
+              "enforcementMode": "transparent"
+            }
+          }
+          JSON
+
+          response_file="$workdir/response.json"
+          http_code=""
+          for method in POST PUT; do
+            http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
+              --cert "$cert_file" --key "$key_file" \
+              -H "Content-Type: application/json" \
+              -X "$method" "$XC_API_URL" \
+              --data-binary "@$policy_file" || true)
+
+            # Success codes: 2xx, or 409 if resource already exists.
+            if [[ "$http_code" =~ ^2[0-9][0-9]$ || "$http_code" == "409" ]]; then
+              echo "WAF policy request succeeded (HTTP $http_code)"
+              cat "$response_file" || true
+              exit 0
+            fi
+
+            # If POST is not allowed, try PUT.
+            if [[ "$method" == "POST" && "$http_code" == "405" ]]; then
+              continue
+            fi
+
+            echo "WAF policy request failed (HTTP $http_code) using $method" >&2
+            cat "$response_file" >&2 || true
+            exit 1
+          done
