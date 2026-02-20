@@ -3,7 +3,7 @@ terraform {
 
   backend "remote" {
     workspaces {
-      prefix = "nginx-plus-eks-"
+      prefix = "eks-"
     }
   }
 

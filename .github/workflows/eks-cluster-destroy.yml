@@ -2,6 +2,16 @@ name: EKS Cluster Destroy
 
 on:
   workflow_dispatch:
+    inputs:
+      workspace_suffix:
+        description: "Suffix for Terraform Cloud workspace name (eks-<suffix>)"
+        required: false
+      cluster_name:
+        description: "Optional EKS cluster name override"
+        required: false
+      region:
+        description: "Optional AWS region override"
+        required: false
 
 concurrency:
   group: eks-cluster
@@ -15,9 +25,8 @@ jobs:
       TFC_ORG: ${{ secrets.TFC_ORG }}
     outputs:
       tf_workspace: ${{ steps.set-outputs.outputs.tf_workspace }}
-      name_prefix: ${{ steps.set-outputs.outputs.name_prefix }}
-      ssh_cidr: ${{ steps.set-outputs.outputs.ssh_cidr }}
       cluster_name: ${{ steps.set-outputs.outputs.cluster_name }}
+      workspace_name: ${{ steps.set-outputs.outputs.workspace_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,19 +41,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          repo_name="${GITHUB_REPOSITORY##*/}"
-          safe_repo_name="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
-          base="${safe_repo_name:0:14}"
-          suffix="$(printf '%s' "$GITHUB_REPOSITORY" | shasum | awk '{print $1}' | cut -c1-6)"
+          workspace_suffix="${WORKSPACE_SUFFIX_INPUT:-}"
+          if [[ -z "$workspace_suffix" ]]; then
+            workspace_suffix="${GITHUB_RUN_ID}"
+          fi
+          workspace_name="eks-${workspace_suffix}"
 
-          tfc_ws="nginx-plus-eks-$repo_name"
-          name_prefix="eks-${base}-${suffix}"
+          cluster_name="${CLUSTER_NAME_INPUT:-}"
+          if [[ -z "$cluster_name" ]]; then
+            cluster_name="${workspace_name}"
+          fi
 
-          echo "TFC_WORKSPACE=$tfc_ws" >> "$GITHUB_ENV"
-          echo "TF_WORKSPACE=$tfc_ws" >> "$GITHUB_ENV"
-          echo "NAME_PREFIX=$name_prefix" >> "$GITHUB_ENV"
-          echo "CLUSTER_NAME=$name_prefix" >> "$GITHUB_ENV"
-          echo "SSH_CIDR=0.0.0.0/0" >> "$GITHUB_ENV"
+          echo "WORKSPACE_SUFFIX=${workspace_suffix}" >> "$GITHUB_ENV"
+          echo "WORKSPACE_NAME=${workspace_name}" >> "$GITHUB_ENV"
+          # Remote backend uses prefix 'eks-'; TF_WORKSPACE is the suffix.
+          echo "TF_WORKSPACE=${workspace_suffix}" >> "$GITHUB_ENV"
+          echo "CLUSTER_NAME=${cluster_name}" >> "$GITHUB_ENV"
+        env:
+          WORKSPACE_SUFFIX_INPUT: ${{ inputs.workspace_suffix }}
+          CLUSTER_NAME_INPUT: ${{ inputs.cluster_name }}
 
       - name: Ensure TFC workspace
         shell: bash
@@ -58,15 +73,13 @@ jobs:
 
           status=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $TFC_TOKEN" \
-            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$WORKSPACE_NAME")
 
           if [[ "$status" == "404" ]]; then
-            curl -sS -X POST \
-              -H "Authorization: Bearer $TFC_TOKEN" \
-              -H "Content-Type: application/vnd.api+json" \
-              -d "{\"data\":{\"type\":\"workspaces\",\"attributes\":{\"name\":\"$TFC_WORKSPACE\",\"execution-mode\":\"local\"}}}" \
-              "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces"
-          elif [[ "$status" != "200" ]]; then
+            echo "Workspace not found in TFC: $WORKSPACE_NAME" >&2
+            exit 1
+          fi
+          if [[ "$status" != "200" ]]; then
             echo "Unexpected status from TFC: $status" >&2
             exit 1
           fi
@@ -76,19 +89,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          repo_name="${GITHUB_REPOSITORY##*/}"
-          safe_repo_name="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
-          base="${safe_repo_name:0:14}"
-          suffix="$(printf '%s' "$GITHUB_REPOSITORY" | shasum | awk '{print $1}' | cut -c1-6)"
-
-          tf_workspace="nginx-plus-eks-$repo_name"
-          name_prefix="eks-${base}-${suffix}"
-          cluster_name="$name_prefix"
-          ssh_cidr="0.0.0.0/0"
-          echo "tf_workspace=$tf_workspace" >> "$GITHUB_OUTPUT"
-          echo "name_prefix=$name_prefix" >> "$GITHUB_OUTPUT"
-          echo "cluster_name=$cluster_name" >> "$GITHUB_OUTPUT"
-          echo "ssh_cidr=$ssh_cidr" >> "$GITHUB_OUTPUT"
+          echo "tf_workspace=${TF_WORKSPACE}" >> "$GITHUB_OUTPUT"
+          echo "workspace_name=${WORKSPACE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=${CLUSTER_NAME}" >> "$GITHUB_OUTPUT"
 
   terraform-plan-destroy:
     needs: setup-tfc
@@ -100,27 +103,12 @@ jobs:
       TFC_ORG: ${{ secrets.TFC_ORG }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: ${{ inputs.region != '' && inputs.region || secrets.AWS_REGION }}
       TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
-      NAME_PREFIX: ${{ needs.setup-tfc.outputs.name_prefix }}
       CLUSTER_NAME: ${{ needs.setup-tfc.outputs.cluster_name }}
-      SSH_CIDR: ${{ needs.setup-tfc.outputs.ssh_cidr }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Prepare SSH key (derive public key for Terraform)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
-            echo "Missing SSH_PRIVATE_KEY secret" >&2
-            exit 1
-          fi
-          printf '%s\n' "$SSH_PRIVATE_KEY" > /tmp/id_rsa
-          chmod 600 /tmp/id_rsa
-          ssh-keygen -y -f /tmp/id_rsa > /tmp/id_rsa.pub
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -143,10 +131,7 @@ jobs:
         run: |
           terraform plan -destroy -out=/tmp/tfdestroy \
             -var="aws_region=$AWS_REGION" \
-            -var="name_prefix=$NAME_PREFIX" \
-            -var="cluster_name=$CLUSTER_NAME" \
-            -var="ssh_cidr=$SSH_CIDR" \
-            -var="ssh_public_key=$(cat /tmp/id_rsa.pub)"
+            -var="cluster_name=$CLUSTER_NAME"
 
       - name: Save terraform destroy plan (JSON)
         working-directory: nginx-plus-one-eks/terraform/eks
@@ -173,7 +158,7 @@ jobs:
       TFC_ORG: ${{ secrets.TFC_ORG }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: ${{ inputs.region != '' && inputs.region || secrets.AWS_REGION }}
       TF_WORKSPACE: ${{ needs.setup-tfc.outputs.tf_workspace }}
     steps:
       - name: Checkout

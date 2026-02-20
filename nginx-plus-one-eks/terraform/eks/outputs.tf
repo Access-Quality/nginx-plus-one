@@ -9,7 +9,3 @@ output "cluster_endpoint" {
 output "cluster_region" {
   value = var.aws_region
 }
-
-output "vpc_id" {
-  value = module.vpc.vpc_id
-}
