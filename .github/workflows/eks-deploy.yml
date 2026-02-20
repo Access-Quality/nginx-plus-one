@@ -88,6 +88,11 @@ jobs:
 
           terraform import \
             -var="aws_region=${{ vars.AWS_REGION }}" \
+            'module.eks.module.kms.aws_kms_alias.this["cluster"]' \
+            "alias/eks/${CLUSTER}" 2>&1 | grep -v "already managed\|No changes" || true
+
+          terraform import \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
             'module.eks.aws_cloudwatch_log_group.this[0]' \
             "/aws/eks/${CLUSTER}/cluster" 2>&1 | grep -v "already managed\|No changes" || true
 
