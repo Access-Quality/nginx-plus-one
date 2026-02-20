@@ -1,4 +1,5 @@
 name: Destroy EKS + Hola Cine
+run-name: "Destroy EKS + Hola Cine (${{ github.actor }})"
 
 on:
   workflow_dispatch:

@@ -1,11 +1,7 @@
 name: Deploy EKS + Hola Cine
+run-name: "Deploy EKS + Hola Cine (${{ github.ref_name }})"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "nginx-eks/**"
-      - ".github/workflows/eks-deploy.yml"
   workflow_dispatch:
 
 env:
