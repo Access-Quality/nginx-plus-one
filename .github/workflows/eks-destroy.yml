@@ -15,7 +15,6 @@ jobs:
   destroy-k8s:
     name: Remove Kubernetes resources
     runs-on: ubuntu-latest
-    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
