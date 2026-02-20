@@ -1,4 +1,4 @@
-name: Destroy EKS + Hola Cine
+name: Destroy EKS + Cine
 run-name: "Destroy EKS + Hola Cine (${{ github.actor }})"
 
 on:

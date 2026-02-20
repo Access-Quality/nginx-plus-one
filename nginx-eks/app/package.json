@@ -1,0 +1,15 @@
+{
+  "name": "cine",
+  "version": "1.0.0",
+  "description": "App de películas por categoría usando OMDb API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  }
+}

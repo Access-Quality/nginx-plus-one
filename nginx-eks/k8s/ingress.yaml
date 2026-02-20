@@ -1,10 +1,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: hola-cine
+  name: cine
   namespace: cine
   annotations:
-    # Route all paths straight to the backend (no URI rewriting needed)
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
@@ -16,6 +15,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: hola-cine
+                name: cine
                 port:
                   number: 80
