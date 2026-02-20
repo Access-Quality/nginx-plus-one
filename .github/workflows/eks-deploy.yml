@@ -78,6 +78,36 @@ jobs:
         working-directory: nginx-eks/terraform/eks
         run: terraform validate
 
+      - name: Import orphaned AWS resources (if any)
+        working-directory: nginx-eks/terraform/eks
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          CLUSTER="nginx-eks"
+
+          echo "Intentando importar recursos huérfanos (los errores se ignoran)..."
+
+          terraform import \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            'module.eks.aws_cloudwatch_log_group.this[0]' \
+            "/aws/eks/${CLUSTER}/cluster" 2>&1 | grep -v "already managed\|No changes" || true
+
+          terraform import \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            'module.eks.aws_iam_role.this[0]' \
+            "${CLUSTER}-cluster-role" 2>&1 | grep -v "already managed\|No changes" || true
+
+          terraform import \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            'module.eks.aws_iam_policy.custom[0]' \
+            "arn:aws:iam::${ACCOUNT_ID}:policy/${CLUSTER}-cluster-role" 2>&1 | grep -v "already managed\|No changes" || true
+
+          terraform import \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            'module.eks.module.eks_managed_node_group["default"].aws_iam_role.this[0]' \
+            "${CLUSTER}-ng-role" 2>&1 | grep -v "already managed\|No changes" || true
+
+          echo "Importación completada."
+
       - name: Terraform Plan
         working-directory: nginx-eks/terraform/eks
         run: |
