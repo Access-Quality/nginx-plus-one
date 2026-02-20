@@ -97,6 +97,38 @@ jobs:
         working-directory: nginx-eks/terraform/eks
         run: terraform init
 
+      - name: Force-unlock workspace (if locked from a previous failed run)
+        working-directory: nginx-eks/terraform/eks
+        run: |
+          WORKSPACE_ID=$(curl -sf \
+            --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            "https://app.terraform.io/api/v2/organizations/${{ secrets.TFC_ORG }}/workspaces/nginx-eks" \
+            | jq -r '.data.id')
+
+          if [[ -z "${WORKSPACE_ID}" || "${WORKSPACE_ID}" == "null" ]]; then
+            echo "No se pudo obtener el workspace ID. Continuando sin desbloquear."
+            exit 0
+          fi
+
+          LOCKED=$(curl -sf \
+            --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}" \
+            | jq -r '.data.attributes.locked')
+
+          if [[ "${LOCKED}" == "true" ]]; then
+            echo "Workspace bloqueado. Ejecutando force-unlock..."
+            curl -sf \
+              --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+              --header "Content-Type: application/vnd.api+json" \
+              --request POST \
+              "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/actions/force-unlock"
+            echo "Workspace desbloqueado."
+          else
+            echo "Workspace libre. Continuando."
+          fi
+
       - name: Terraform Destroy
         working-directory: nginx-eks/terraform/eks
         run: |
