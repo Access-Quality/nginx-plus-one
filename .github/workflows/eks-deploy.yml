@@ -149,14 +149,26 @@ jobs:
           echo "${HOSTNAME}"
 
           echo ""
-          echo "Resolving IP address..."
-          IP=$(dig +short "${HOSTNAME}" | head -1)
+          echo "Waiting for DNS to resolve IP address..."
+          IP=""
+          ATTEMPTS=0
+          MAX_ATTEMPTS=30   # 30 x 10s = 5 min máximo
+          until [[ -n "${IP}" ]] || [[ ${ATTEMPTS} -ge ${MAX_ATTEMPTS} ]]; do
+            IP=$(dig +short "${HOSTNAME}" | grep -E '^[0-9]+\.' | head -1)
+            if [[ -z "${IP}" ]]; then
+              ATTEMPTS=$((ATTEMPTS + 1))
+              echo "  [${ATTEMPTS}/${MAX_ATTEMPTS}] Todavía propagando... reintentando en 10s"
+              sleep 10
+            fi
+          done
+
           if [[ -n "${IP}" ]]; then
             echo "IP address: ${IP}"
           else
-            echo "IP address: (still propagating – try again in a few seconds)"
+            echo "IP address: no resolvió en 5 minutos. Inténtalo manualmente con:"
+            echo "  dig +short ${HOSTNAME}"
           fi
 
           echo ""
-          echo "Point  cine.example.com  →  ${HOSTNAME:-<hostname above>}"
+          echo "Point  cine.example.com  →  ${HOSTNAME}"
           echo "──────────────────────────────────────────────"
