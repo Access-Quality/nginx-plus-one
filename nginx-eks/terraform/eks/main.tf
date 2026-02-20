@@ -1,5 +1,6 @@
 locals {
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+  # 1 sola AZ → 1 sola EIP en el Load Balancer
+  azs = slice(data.aws_availability_zones.available.names, 0, 1)
 
   cluster_iam_role_name = substr("${var.cluster_name}-cluster-role", 0, 64)
   node_iam_role_name    = substr("${var.cluster_name}-ng-role", 0, 64)
@@ -14,8 +15,8 @@ module "vpc" {
   cidr = "10.0.0.0/16"
 
   azs             = local.azs
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+  private_subnets = []
+  public_subnets  = ["10.0.101.0/24"]
 
   enable_nat_gateway   = false
   enable_dns_hostnames = true
