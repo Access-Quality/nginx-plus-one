@@ -91,9 +91,6 @@ jobs:
     name: Terraform Plan
     runs-on: ubuntu-latest
     needs: setup
-    outputs:
-      cluster_name: ${{ steps.tf-output.outputs.cluster_name }}
-      cluster_region: ${{ steps.tf-output.outputs.cluster_region }}
 
     steps:
       - name: Checkout
