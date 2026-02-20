@@ -1,5 +1,7 @@
 # Ignore only files at repository root
 /*
+!/nginx-eks/
+!/nginx-eks/**
 !/nginx-plus-one-eks/
 !/nginx-plus-one-eks/**
 !/nginx-plus-one-vm/

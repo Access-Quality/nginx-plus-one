@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hola-cine
+  namespace: cine
+  labels:
+    app: hola-cine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hola-cine
+  template:
+    metadata:
+      labels:
+        app: hola-cine
+    spec:
+      containers:
+        - name: hola-cine
+          image: node:20-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+          # Inline Node.js server – no Dockerfile required
+          command:
+            - node
+            - -e
+            - |
+              const http = require('http');
+              const port = process.env.PORT || 3000;
+              http.createServer((req, res) => {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(
+                  '<!DOCTYPE html><html><head><meta charset="utf-8"/>' +
+                  '<title>Hola Cine</title></head>' +
+                  '<body style="font-family:sans-serif;text-align:center;padding:4rem">' +
+                  '<h1>🎬 Hola Cine</h1>' +
+                  '<p>Bienvenido a cine.example.com</p>' +
+                  '</body></html>\n'
+                );
+              }).listen(port, '0.0.0.0', () =>
+                console.log(`hola-cine escuchando en puerto ${port}`)
+              );
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hola-cine
+  namespace: cine
+  labels:
+    app: hola-cine
+spec:
+  # ClusterIP: traffic enters via the NGINX Ingress Controller
+  type: ClusterIP
+  selector:
+    app: hola-cine
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
