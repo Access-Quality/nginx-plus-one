@@ -327,8 +327,15 @@ jobs:
 
       - name: Wait for Deployment rollout
         run: |
-          kubectl rollout status deployment/cine \
-            -n cine --timeout=5m
+          echo "Esperando a que el Deployment 'cine' sea creado..."
+          ATTEMPTS=0
+          until kubectl get deployment cine -n cine &>/dev/null || [[ ${ATTEMPTS} -ge 30 ]]; do
+            ATTEMPTS=$((ATTEMPTS + 1))
+            echo "  [${ATTEMPTS}/30] Aún no existe, reintentando en 5s..."
+            sleep 5
+          done
+          echo "Deployment encontrado. Esperando rollout completo..."
+          kubectl rollout status deployment/cine -n cine --timeout=5m
 
       - name: Show Ingress LoadBalancer hostname and IP
         run: |
