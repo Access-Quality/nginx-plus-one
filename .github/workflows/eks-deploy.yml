@@ -388,6 +388,14 @@ jobs:
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create NGINX Plus license secret
+        run: |
+          kubectl create secret generic nginx-license \
+            --from-literal=license.jwt=${{ secrets.LICENSE_JWT }} \
+            --from-literal=license.key=${{ secrets.LICENSE_KEY }} \
+            --namespace nginx-ingress \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create NGINX One enrollment token secret
         run: |
           kubectl create secret generic nginx-one-token \

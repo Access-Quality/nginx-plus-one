@@ -35,6 +35,22 @@ controller:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
       service.beta.kubernetes.io/aws-load-balancer-type: nlb
 
+  # ── NGINX Plus license files mounted from K8s Secret ──────────────────────
+  extraVolumes:
+    - name: nginx-license
+      secret:
+        secretName: nginx-license
+
+  extraVolumeMounts:
+    - name: nginx-license
+      mountPath: /etc/nginx/license.jwt
+      subPath: license.jwt
+      readOnly: true
+    - name: nginx-license
+      mountPath: /etc/nginx/license.key
+      subPath: license.key
+      readOnly: true
+
   # ── NGINX One enrollment token injected from K8s Secret ─────────────────────
   pod:
     extraEnvs:
