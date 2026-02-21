@@ -24,15 +24,17 @@ spec:
         block: true
         alarm: true
     # ── Violations ────────────────────────────────────────────────────────────
+    # Note: VIOL_ATTACK_SIGNATURE/VIOL_SQL_INJECTION/VIOL_XSS are not valid
+    # violation names in NAP v5 — signature enforcement is done via signature-sets.
     blocking-settings:
       violations:
-        - name: VIOL_ATTACK_SIGNATURE
+        - name: VIOL_EVASION
           alarm: true
           block: true
-        - name: VIOL_SQL_INJECTION
+        - name: VIOL_HTTP_PROTOCOL
           alarm: true
           block: true
-        - name: VIOL_XSS
+        - name: VIOL_ENCODING
           alarm: true
           block: true
         - name: VIOL_FILETYPE
@@ -68,15 +70,17 @@ spec:
       - name: High Accuracy Signatures
         block: true
         alarm: true
+    # Note: VIOL_ATTACK_SIGNATURE/VIOL_SQL_INJECTION/VIOL_XSS are not valid
+    # violation names in NAP v5 — signature enforcement is done via signature-sets.
     blocking-settings:
       violations:
-        - name: VIOL_ATTACK_SIGNATURE
+        - name: VIOL_EVASION
           alarm: true
           block: true
-        - name: VIOL_SQL_INJECTION
+        - name: VIOL_HTTP_PROTOCOL
           alarm: true
           block: true
-        - name: VIOL_XSS
+        - name: VIOL_ENCODING
           alarm: true
           block: true
         - name: VIOL_FILETYPE
