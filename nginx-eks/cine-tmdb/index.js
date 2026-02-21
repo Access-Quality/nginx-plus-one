@@ -21,18 +21,44 @@ const CATEGORIES = [
 /**
  * Busca películas populares por género en TMDB.
  * Devuelve hasta 20 resultados con poster_path definido.
+ *
+ * TMDB soporta dos formatos de autenticación:
+ *   - API Key v3 (cadena hex ~32 chars):  ?api_key=KEY
+ *   - Read Access Token (JWT largo):       Authorization: Bearer TOKEN
+ * Esta función detecta el formato automáticamente por longitud/prefijo.
+ * Incluye AbortController para timeout de 8 s — evita que el pod cuelgue.
  */
 async function fetchMovies(genreId) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
+    // Si el token es un JWT (>100 chars o empieza con "eyJ"), usar Bearer.
+    // Si es la API Key v3 corta (hex ~32 chars), usar ?api_key= en la URL.
+    const isJWT = TMDB_API_KEY.length > 100 || TMDB_API_KEY.startsWith("eyJ");
+    const queryParam = isJWT ? "" : `&api_key=${TMDB_API_KEY}`;
+    const headers = {
+      Accept: "application/json",
+      ...(isJWT ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {}),
+    };
+
     const url =
       `${TMDB_BASE}/discover/movie` +
-      `?api_key=${TMDB_API_KEY}` +
-      `&with_genres=${genreId}` +
+      `?with_genres=${genreId}` +
       `&sort_by=popularity.desc` +
       `&language=es-MX` +
       `&include_adult=false` +
-      `&page=1`;
-    const res = await fetch(url);
+      `&page=1` +
+      queryParam;
+
+    const res = await fetch(url, { signal: controller.signal, headers });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(
+        `TMDB error: HTTP ${res.status} for genreId ${genreId} — ${body.slice(0, 200)}`,
+      );
+      return [];
+    }
     const data = await res.json();
     if (!Array.isArray(data.results)) return [];
     return data.results
@@ -45,7 +71,9 @@ async function fetchMovies(genreId) {
         posterUrl: POSTER_BASE + m.poster_path,
         rating: m.vote_average ? m.vote_average.toFixed(1) : null,
       }));
-  } catch {
+  } catch (err) {
+    clearTimeout(timer);
+    console.error(`fetchMovies error (genreId=${genreId}):`, err.message);
     return [];
   }
 }
@@ -60,11 +88,14 @@ app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
  */
 app.get("/api/movies", async (req, res) => {
   if (!TMDB_API_KEY) {
+    console.error("TMDB_API_KEY no está configurada");
     return res.status(500).json({ error: "TMDB_API_KEY no configurada" });
   }
   const catId = req.query.category || "action";
   const cat = CATEGORIES.find((c) => c.id === catId) || CATEGORIES[0];
+  console.log(`Fetching TMDB category=${catId} genreId=${cat.genreId}`);
   const movies = await fetchMovies(cat.genreId);
+  console.log(`TMDB returned ${movies.length} movies for category=${catId}`);
   res.json(movies);
 });
 
@@ -257,8 +288,14 @@ app.get("/", (_req, res) => {
       var grid = document.getElementById('grid');
       grid.innerHTML = '<div class="status" style="grid-column:1/-1"><div class="spinner"></div><br>Cargando...</div>';
 
+      // Timeout de 12 s en el cliente para no quedar colgado indefinidamente
+      var ctrl    = new AbortController();
+      var timer   = setTimeout(function() { ctrl.abort(); }, 12000);
+
       try {
-        var res    = await fetch('/api/movies?category=' + id);
+        var res = await fetch('/api/movies?category=' + id, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         var movies = await res.json();
 
         if (!movies.length) {
@@ -284,7 +321,11 @@ app.get("/", (_req, res) => {
           '</div>';
         }).join('');
       } catch(e) {
-        grid.innerHTML = '<div class="status" style="grid-column:1/-1">Error al cargar. Intenta nuevamente.</div>';
+        clearTimeout(timer);
+        var msg = e.name === 'AbortError'
+          ? 'Tiempo de espera agotado. Verifica la conexión del servidor.'
+          : 'Error al cargar (' + e.message + '). Intenta nuevamente.';
+        grid.innerHTML = '<div class="status" style="grid-column:1/-1">' + msg + '</div>';
       }
     }
 
