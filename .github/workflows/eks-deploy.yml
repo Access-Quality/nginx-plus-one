@@ -121,11 +121,11 @@ jobs:
           echo "Image pushed: ${IMAGE}"
 
   # ─────────────────────────────────────────────
-  # Job 2c – Build & push NGINX Plus NIC image
-  #          (NIC + NAP WAF + NGINX Agent)
+  # Job 2c – Pull & push NGINX Plus NIC image
+  #          (official image already ships nginx-agent)
   # ─────────────────────────────────────────────
   build-nic:
-    name: Build & Push NGINX Plus NIC Image
+    name: Pull & Push NGINX Plus NIC Image
     runs-on: ubuntu-latest
     needs: setup
     outputs:
@@ -137,9 +137,8 @@ jobs:
 
       - name: Configure Docker mTLS for private-registry.nginx.com
         run: |
-          # private-registry.nginx.com uses client-certificate auth (mTLS);
-          # docker login (username/password) is NOT supported by this registry.
-          # Place the repo cert/key where the Docker daemon expects them.
+          # private-registry.nginx.com uses mTLS client-cert auth.
+          # Place cert/key where the Docker daemon expects them.
           sudo mkdir -p /etc/docker/certs.d/private-registry.nginx.com
           printf '%s' "${{ secrets.NGINX_REPO_CRT }}" \
             | sudo tee /etc/docker/certs.d/private-registry.nginx.com/client.cert > /dev/null
@@ -149,12 +148,6 @@ jobs:
             /etc/docker/certs.d/private-registry.nginx.com/client.cert \
             /etc/docker/certs.d/private-registry.nginx.com/client.key
 
-      - name: Pull base NIC image (host daemon — uses mTLS certs above)
-        run: |
-          NIC_VERSION=$(grep 'ARG NIC_VERSION' nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
-            | head -1 | cut -d= -f2)
-          docker pull "private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}"
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -162,34 +155,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Write repo credentials to temp files (BuildKit secrets)
-        run: |
-          printf '%s' "${{ secrets.NGINX_REPO_CRT }}" > /tmp/nginx-repo.crt
-          printf '%s' "${{ secrets.NGINX_REPO_KEY }}" > /tmp/nginx-repo.key
-
-      - name: Build and push NGINX Plus NIC image
+      - name: Pull official NIC image, retag and push to GHCR
         id: meta
         run: |
+          # The official NIC+NAP WAF image already ships nginx-agent.
+          # No custom Dockerfile needed — just retag and push to a registry
+          # that the EKS cluster can pull from.
+          NIC_VERSION=$(grep 'ARG NIC_VERSION' nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
+            | head -1 | cut -d= -f2)
+          SRC="private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}"
           IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
-          # Use host Docker daemon (DOCKER_BUILDKIT=1) so it sees the locally
-          # pulled base image and the mTLS certs in /etc/docker/certs.d/.
-          # docker buildx with docker-container driver runs in an isolated
-          # BuildKit container that does NOT inherit host certs.
-          DOCKER_BUILDKIT=1 docker build \
-            --secret id=nginx_crt,src=/tmp/nginx-repo.crt \
-            --secret id=nginx_key,src=/tmp/nginx-repo.key \
-            --file nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
-            --tag "${IMAGE}" \
-            nginx-plus-one-eks/docker/nginx-nic/
+          docker pull "${SRC}"
+          docker tag  "${SRC}" "${IMAGE}"
           docker push "${IMAGE}"
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "NIC image pushed: ${IMAGE}"
 
-      - name: Clean up credential files and Docker mTLS certs
+      - name: Clean up Docker mTLS certs
         if: always()
-        run: |
-          shred -u /tmp/nginx-repo.crt /tmp/nginx-repo.key 2>/dev/null || true
-          sudo rm -rf /etc/docker/certs.d/private-registry.nginx.com
+        run: sudo rm -rf /etc/docker/certs.d/private-registry.nginx.com
 
   # ─────────────────────────────────────────────
   # Job 3 – Terraform Plan
@@ -412,10 +396,13 @@ jobs:
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create NGINX One enrollment token secret
+      - name: Create NGINX One data plane key secret
+        # Secret key must be 'dataplane.key' — required by the Helm chart
+        # nginxAgent.dataplaneKeySecretName value.
+        # Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
         run: |
           kubectl create secret generic nginx-one-token \
-            --from-literal=data-plane-key=${{ secrets.DATA_PLANE_KEY }} \
+            --from-literal=dataplane.key=${{ secrets.DATA_PLANE_KEY }} \
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
 
@@ -426,9 +413,10 @@ jobs:
             echo "ERROR: build-nic output image is empty"
             exit 1
           fi
-          helm repo add nginx-stable https://helm.nginx.com/stable
-          helm repo update
-          helm upgrade --install nginx-ingress nginx-stable/nginx-ingress \
+          # Use the official OCI chart — it includes nginxAgent.* support
+          # Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
+          helm upgrade --install nginx-ingress \
+            oci://ghcr.io/nginx/charts/nginx-ingress --version 2.4.4 \
             --namespace nginx-ingress \
             --values nginx-plus-one-eks/k8s/nginx-ic/nic-values.yaml \
             --set controller.image.repository="$(cut -d: -f1 <<< "${NIC_IMAGE}")" \

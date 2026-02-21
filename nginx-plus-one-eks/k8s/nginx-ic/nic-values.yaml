@@ -1,8 +1,10 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Helm values — NGINX Plus Ingress Controller (nginx-stable/nginx-ingress)
+# Helm values — NGINX Plus Ingress Controller
+# Chart: oci://ghcr.io/nginx/charts/nginx-ingress
 # ──────────────────────────────────────────────────────────────────────────────
 # Image repository + tag are injected via --set at deploy time (GitHub Actions).
-# DATA_PLANE_KEY is injected via the "nginx-one-token" K8s Secret.
+# NGINX One connection is via nginxAgent.* (chart-native, no manual env vars).
+# Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
 # ──────────────────────────────────────────────────────────────────────────────
 
 controller:
@@ -35,31 +37,6 @@ controller:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
       service.beta.kubernetes.io/aws-load-balancer-type: nlb
 
-  # ── NGINX Plus license files mounted from K8s Secret ──────────────────────
-  extraVolumes:
-    - name: nginx-license
-      secret:
-        secretName: nginx-license
-
-  extraVolumeMounts:
-    - name: nginx-license
-      mountPath: /etc/nginx/license.jwt
-      subPath: license.jwt
-      readOnly: true
-    - name: nginx-license
-      mountPath: /etc/nginx/license.key
-      subPath: license.key
-      readOnly: true
-
-  # ── NGINX One enrollment token injected from K8s Secret ─────────────────────
-  pod:
-    extraEnvs:
-      - name: NGINX_AGENT_SERVER_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: nginx-one-token
-            key: data-plane-key
-
   # ── NGINX global config tweaks ──────────────────────────────────────────────
   config:
     entries:
@@ -79,3 +56,11 @@ controller:
     limits:
       cpu: "1"
       memory: 512Mi
+
+# ── NGINX One Agent — connects NIC to NGINX One Console ──────────────────────
+# The secret 'nginx-one-token' must have key 'dataplane.key'.
+# Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
+nginxAgent:
+  enable: true
+  endpointHost: agent.connect.nginx.com
+  dataplaneKeySecretName: nginx-one-token
