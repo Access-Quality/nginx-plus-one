@@ -19,43 +19,25 @@ FROM private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}
 
 USER root
 
-# ── Install nginx-agent from NGINX private package repo ──────────────────────
+# ── Install nginx-agent via the official NGINX One install script ─────────────
+# Same approach used in install-nginx-plus.sh for the VM deployment.
+# DATA_PLANE_KEY is intentionally empty at build time — the real token is
+# injected at runtime via the NGINX_AGENT_SERVER_TOKEN env var (K8s Secret).
 RUN --mount=type=secret,id=nginx_crt,dst=/etc/ssl/nginx/nginx-repo.crt,mode=0444 \
     --mount=type=secret,id=nginx_key,dst=/etc/ssl/nginx/nginx-repo.key,mode=0444 \
     set -eux; \
     apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates apt-transport-https gnupg lsb-release wget; \
-    # Import NGINX signing key.
-    # The key may be ASCII-armored or already binary — handle both formats.
-    # Write to a separate keyring file to avoid clobbering the one already
-    # present in the base NIC image.
-    wget -qO /tmp/nginx_signing.key https://cs.nginx.com/static/keys/nginx_signing.key; \
-    if gpg --batch --no-tty --list-packets /tmp/nginx_signing.key 2>/dev/null \
-            | grep -q 'public key'; then \
-        cp /tmp/nginx_signing.key /usr/share/keyrings/nginx-agent-keyring.gpg; \
-    else \
-        gpg --batch --no-tty --yes --dearmor \
-            -o /usr/share/keyrings/nginx-agent-keyring.gpg /tmp/nginx_signing.key; \
-    fi; \
-    rm -f /tmp/nginx_signing.key; \
-    # Add nginx-agent package repo (authenticated via nginx-repo.crt / .key).
-    # Detect OS (ubuntu or debian) so the correct repo path is used.
-    # The base NIC NAP image is Debian-based; lsb_release returns 'bookworm'.
-    OS_ID=$(. /etc/os-release && echo "${ID}"); \
-    CODENAME=$(lsb_release -cs); \
-    printf "deb [signed-by=/usr/share/keyrings/nginx-agent-keyring.gpg] \
-https://pkgs.nginx.com/nginx-agent/${OS_ID} %s agent\n" "${CODENAME}" \
-        > /etc/apt/sources.list.d/nginx-agent.list; \
-    # Download apt config snippet that injects the client cert for apt-get
-    wget -q \
-        --certificate=/etc/ssl/nginx/nginx-repo.crt \
-        --private-key=/etc/ssl/nginx/nginx-repo.key \
-        -O /etc/apt/apt.conf.d/90nginx \
-        https://cs.nginx.com/static/files/90nginx; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends nginx-agent; \
-    # Clean up – remove apt credential snippet so it is NOT baked into the image
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    # Write apt client-cert config so pkgs.nginx.com authenticates correctly.
+    # This must reference the secret-mounted paths, which are only available
+    # during this RUN layer.
+    printf 'Acquire::https::pkgs.nginx.com::SslCert "/etc/ssl/nginx/nginx-repo.crt";\nAcquire::https::pkgs.nginx.com::SslKey  "/etc/ssl/nginx/nginx-repo.key";\n' \
+        > /etc/apt/apt.conf.d/90nginx; \
+    # NGINX One official install script — handles OS/distro detection,
+    # signing-key import, and repo setup automatically.
+    curl -fsSL https://agent.connect.nginx.com/nginx-agent/install \
+        | DATA_PLANE_KEY="" sh -s -- -y; \
+    # Remove apt credential snippet so it is NOT baked into the final image
     rm -f /etc/apt/apt.conf.d/90nginx; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
