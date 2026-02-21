@@ -142,7 +142,7 @@ jobs:
         run: |
           echo "${{ secrets.LICENSE_JWT }}" | \
             docker login private-registry.nginx.com \
-              --username=none --password-stdin
+              --username=oauth2accesstoken --password-stdin
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
