@@ -5,13 +5,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 const OMDB_API_KEY = process.env.OMDB_API_KEY;
 
+// Cada query es un título de franquicia conocida — OMDB ?s= busca por título,
+// no acepta múltiples palabras no relacionadas. Una franquicia por categoría
+// garantiza múltiples entradas con poster real.
 const CATEGORIES = [
   { id: "action", name: "Acción", query: "mission impossible" },
-  { id: "comedy", name: "Comedia", query: "superbad hangover" },
-  { id: "drama", name: "Drama", query: "shawshank godfather" },
-  { id: "horror", name: "Terror", query: "conjuring halloween" },
-  { id: "scifi", name: "Ciencia Ficción", query: "interstellar matrix" },
-  { id: "animation", name: "Animación", query: "pixar toy story" },
+  { id: "comedy", name: "Comedia", query: "home alone" },
+  { id: "drama", name: "Drama", query: "the godfather" },
+  { id: "horror", name: "Terror", query: "halloween" },
+  { id: "scifi", name: "Ciencia Ficción", query: "star wars" },
+  { id: "animation", name: "Animación", query: "toy story" },
 ];
 
 // SVG inline placeholder (no depende de servicios externos)
