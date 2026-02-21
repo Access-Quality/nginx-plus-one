@@ -177,6 +177,9 @@ jobs:
           COMPILER_VERSION=$(grep '^ARG COMPILER_VERSION' "${DOCKERFILE}" \
             | head -1 | cut -d= -f2 | tr -d '[:space:]')
           echo "==> WAF compiler version: ${COMPILER_VERSION}"
+          # The waf-compiler container runs as a non-root user — the mounted
+          # directory must be world-writable so it can write the output bundle.
+          chmod o+w nginx-plus-one-eks/docker/nginx-nic/
           docker run --rm \
             -v "$PWD/nginx-plus-one-eks/docker/nginx-nic":/workspace \
             "private-registry.nginx.com/nap/waf-compiler:${COMPILER_VERSION}" \
