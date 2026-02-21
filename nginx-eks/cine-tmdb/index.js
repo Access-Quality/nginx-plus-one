@@ -83,7 +83,9 @@ const BUILD_TIME = new Date().toISOString();
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-app.get("/healthz", (_req, res) => res.json({ status: "ok", build: BUILD_TIME }));
+app.get("/healthz", (_req, res) =>
+  res.json({ status: "ok", build: BUILD_TIME }),
+);
 
 /**
  * Endpoint de diagnóstico — abre en el browser para ver qué pasa sin kubectl.
@@ -91,21 +93,23 @@ app.get("/healthz", (_req, res) => res.json({ status: "ok", build: BUILD_TIME })
  */
 app.get("/api/debug", async (req, res) => {
   const keyPresent = !!TMDB_API_KEY;
-  const keyLen     = TMDB_API_KEY ? TMDB_API_KEY.length : 0;
-  const isJWT      = keyLen > 100 || (TMDB_API_KEY || "").startsWith("eyJ");
+  const keyLen = TMDB_API_KEY ? TMDB_API_KEY.length : 0;
+  const isJWT = keyLen > 100 || (TMDB_API_KEY || "").startsWith("eyJ");
   const authMethod = !keyPresent ? "none" : isJWT ? "Bearer" : "api_key_param";
 
   let tmdbTest = { ok: false, status: null, error: null, resultCount: 0 };
   if (keyPresent) {
     try {
-      const ctrl  = new AbortController();
-      const tOut  = setTimeout(() => ctrl.abort(), 8000);
-      const qp    = isJWT ? "" : `&api_key=${TMDB_API_KEY}`;
-      const hdrs  = { Accept: "application/json",
-                      ...(isJWT ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {}) };
-      const r     = await fetch(
+      const ctrl = new AbortController();
+      const tOut = setTimeout(() => ctrl.abort(), 8000);
+      const qp = isJWT ? "" : `&api_key=${TMDB_API_KEY}`;
+      const hdrs = {
+        Accept: "application/json",
+        ...(isJWT ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {}),
+      };
+      const r = await fetch(
         `${TMDB_BASE}/discover/movie?with_genres=28&sort_by=popularity.desc&language=es-MX&page=1${qp}`,
-        { signal: ctrl.signal, headers: hdrs }
+        { signal: ctrl.signal, headers: hdrs },
       );
       clearTimeout(tOut);
       tmdbTest.status = r.status;
@@ -122,10 +126,10 @@ app.get("/api/debug", async (req, res) => {
   }
 
   res.json({
-    build:      BUILD_TIME,
+    build: BUILD_TIME,
     nodeVersion: process.version,
     keyPresent,
-    keyLength:  keyLen,
+    keyLength: keyLen,
     authMethod,
     tmdbTest,
   });
@@ -358,8 +362,7 @@ app.get("/", (_req, res) => {
           var ratingHtml  = m.rating ? '<span class="' + ratingClass + '">' + m.rating + '</span>' : '';
           return '<div class="card">' +
             '<div class="card-poster">' +
-              '<img src="' + m.posterUrl + '" alt="' + m.title.replace(/"/g, '&quot;') + '" loading="lazy" ' +
-                'onerror="this.style.display=\'none\'">' +
+              '<img src="' + m.posterUrl + '" alt="' + m.title.replace(/"/g, '&quot;') + '" loading="lazy">' +
             '</div>' +
             '<div class="card-info">' +
               '<h3 title="' + m.title.replace(/"/g, '&quot;') + '">' + m.title + '</h3>' +
