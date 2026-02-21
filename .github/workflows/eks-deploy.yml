@@ -135,9 +135,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Configure Docker mTLS for private-registry.nginx.com
         run: |
           # private-registry.nginx.com uses client-certificate auth (mTLS);
@@ -151,6 +148,12 @@ jobs:
           sudo chmod 0400 \
             /etc/docker/certs.d/private-registry.nginx.com/client.cert \
             /etc/docker/certs.d/private-registry.nginx.com/client.key
+
+      - name: Pull base NIC image (host daemon — uses mTLS certs above)
+        run: |
+          NIC_VERSION=$(grep 'ARG NIC_VERSION' nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
+            | head -1 | cut -d= -f2)
+          docker pull "private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -168,14 +171,17 @@ jobs:
         id: meta
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
-          docker buildx build \
-            --platform linux/amd64 \
+          # Use host Docker daemon (DOCKER_BUILDKIT=1) so it sees the locally
+          # pulled base image and the mTLS certs in /etc/docker/certs.d/.
+          # docker buildx with docker-container driver runs in an isolated
+          # BuildKit container that does NOT inherit host certs.
+          DOCKER_BUILDKIT=1 docker build \
             --secret id=nginx_crt,src=/tmp/nginx-repo.crt \
             --secret id=nginx_key,src=/tmp/nginx-repo.key \
             --file nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
             --tag "${IMAGE}" \
-            --push \
             nginx-plus-one-eks/docker/nginx-nic/
+          docker push "${IMAGE}"
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "NIC image pushed: ${IMAGE}"
 
