@@ -406,6 +406,7 @@ jobs:
           kubectl create secret generic nginx-license \
             --from-file=license.jwt=/tmp/license.jwt \
             --from-file=license.key=/tmp/license.key \
+            --type=nginx.com/license \
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
           rm -f /tmp/license.jwt /tmp/license.key
