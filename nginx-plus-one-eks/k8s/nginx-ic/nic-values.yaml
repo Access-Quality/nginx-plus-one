@@ -11,6 +11,12 @@ controller:
   # ── NGINX Plus license ──────────────────────────────────────────────────────
   nginxplus: true
 
+  # NIC 4.0+ requires the JWT license referenced via mgmt.licenseTokenSecretName
+  # The secret must contain key 'license.jwt'.
+  # Ref: https://docs.nginx.com/nginx-ingress-controller/installation/upgrade-version/#upgrade-from-3x-to-4x
+  mgmt:
+    licenseTokenSecretName: nginx-license
+
   # ── Image (repo + tag overridden in workflow via --set) ─────────────────────
   image:
     repository: ghcr.io/ocpdata/nginx-nic # overridden with --set

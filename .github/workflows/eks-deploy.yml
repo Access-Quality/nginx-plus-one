@@ -440,6 +440,26 @@ jobs:
             --wait \
             --timeout 10m
 
+      - name: Diagnose NIC pod (runs on failure)
+        if: failure()
+        run: |
+          echo "=== Pods in nginx-ingress ==="
+          kubectl get pods -n nginx-ingress -o wide
+          echo ""
+          echo "=== Describe NIC pod ==="
+          POD=$(kubectl get pod -n nginx-ingress -l app=nginx-ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [[ -n "${POD}" ]]; then
+            kubectl describe pod "${POD}" -n nginx-ingress
+            echo ""
+            echo "=== NIC pod logs (last 100 lines) ==="
+            kubectl logs "${POD}" -n nginx-ingress --tail=100 || true
+          else
+            echo "No NIC pod found"
+          fi
+          echo ""
+          echo "=== Events in nginx-ingress namespace ==="
+          kubectl get events -n nginx-ingress --sort-by='.lastTimestamp' | tail -30
+
       - name: Apply WAF APPolicy + APLogConf
         run: |
           kubectl apply -f nginx-plus-one-eks/k8s/waf/waf-logconf.yaml
