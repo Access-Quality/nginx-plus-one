@@ -162,7 +162,7 @@ jobs:
           # No custom Dockerfile needed — just retag and push to a registry
           # that the EKS cluster can pull from.
           NIC_VERSION=$(grep 'ARG NIC_VERSION' nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
-            | head -1 | cut -d= -f2)
+            | head -1 | cut -d= -f2 | tr -d '[:space:]')
           SRC="private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}"
           IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
           docker pull "${SRC}"
