@@ -403,12 +403,13 @@ jobs:
           # Write values to temp files to safely handle newlines / special chars
           printf '%s' "${{ secrets.LICENSE_JWT }}" > /tmp/license.jwt
           printf '%s' "${{ secrets.LICENSE_KEY }}" > /tmp/license.key
+          # Secret type nginx.com/license is immutable — delete first if it exists with wrong type
+          kubectl delete secret nginx-license -n nginx-ingress --ignore-not-found
           kubectl create secret generic nginx-license \
             --from-file=license.jwt=/tmp/license.jwt \
             --from-file=license.key=/tmp/license.key \
             --type=nginx.com/license \
-            --namespace nginx-ingress \
-            --dry-run=client -o yaml | kubectl apply -f -
+            --namespace nginx-ingress
           rm -f /tmp/license.jwt /tmp/license.key
 
       - name: Create NGINX One data plane key secret
@@ -417,10 +418,10 @@ jobs:
         # Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
         run: |
           printf '%s' "${{ secrets.DATA_PLANE_KEY }}" > /tmp/dataplane.key
+          kubectl delete secret nginx-one-token -n nginx-ingress --ignore-not-found
           kubectl create secret generic nginx-one-token \
             --from-file=dataplane.key=/tmp/dataplane.key \
-            --namespace nginx-ingress \
-            --dry-run=client -o yaml | kubectl apply -f -
+            --namespace nginx-ingress
           rm -f /tmp/dataplane.key
 
       - name: Install NGINX Plus NIC with App Protect WAF
