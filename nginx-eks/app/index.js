@@ -1,44 +1,75 @@
-'use strict';
+"use strict";
 
-const express = require('express');
+const express = require("express");
 const app = express();
 const port = process.env.PORT || 3000;
 const OMDB_API_KEY = process.env.OMDB_API_KEY;
 
 const CATEGORIES = [
-  { id: 'action',    name: 'Acción',           query: 'avengers marvel' },
-  { id: 'comedy',    name: 'Comedia',           query: 'comedy humor 2023' },
-  { id: 'drama',     name: 'Drama',             query: 'drama award winning' },
-  { id: 'horror',    name: 'Terror',            query: 'horror thriller 2023' },
-  { id: 'scifi',     name: 'Ciencia Ficción',   query: 'science fiction space' },
-  { id: 'animation', name: 'Animación',         query: 'pixar animation disney' },
+  { id: "action", name: "Acción", query: "mission impossible" },
+  { id: "comedy", name: "Comedia", query: "superbad hangover" },
+  { id: "drama", name: "Drama", query: "shawshank godfather" },
+  { id: "horror", name: "Terror", query: "conjuring halloween" },
+  { id: "scifi", name: "Ciencia Ficción", query: "interstellar matrix" },
+  { id: "animation", name: "Animación", query: "pixar toy story" },
 ];
 
 // SVG inline placeholder: evita dependencia de servicios externos como via.placeholder.com (caído desde 2023)
 const NO_POSTER_SVG = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='445' viewBox='0 0 300 445'%3E%3Crect width='300' height='445' fill='%231a1a2e'/%3E%3Ctext x='50%25' y='48%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='16' fill='%23e94560'%3ESin P%C3%B3ster%3C/text%3E%3C/svg%3E`;
 
+const MIN_POSTERS = 8; // mínimo de tarjetas con poster real
+const MAX_PAGES = 4; // máximo de páginas a consultar en OMDB para conseguirlos
+
+/**
+ * Obtiene películas con poster real para un query dado.
+ * Itera páginas de OMDB hasta reunir MIN_POSTERS resultados con poster válido
+ * o alcanzar MAX_PAGES, lo que ocurra primero.
+ */
 async function fetchMovies(query) {
-  try {
-    const url = `https://www.omdbapi.com/?s=${encodeURIComponent(query)}&type=movie&apikey=${OMDB_API_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return data.Response === 'True' ? data.Search : [];
-  } catch {
-    return [];
+  const withPoster = [];
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    try {
+      const url =
+        `https://www.omdbapi.com/?s=${encodeURIComponent(query)}` +
+        `&type=movie&page=${page}&apikey=${OMDB_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.Response !== "True" || !Array.isArray(data.Search)) break;
+
+      // Sólo conservar entradas con poster real
+      const valid = data.Search.filter((m) => m.Poster && m.Poster !== "N/A");
+      withPoster.push(...valid);
+
+      // Si ya tenemos suficientes o no hay más páginas disponibles, parar
+      const totalResults = parseInt(data.totalResults, 10) || 0;
+      if (withPoster.length >= MIN_POSTERS || page * 10 >= totalResults) break;
+    } catch {
+      break;
+    }
   }
+
+  return withPoster.slice(0, 12); // devolver como máximo 12 tarjetas
 }
 
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 function renderHTML(categories) {
   const tabButtons = categories
-    .map((c, i) => `<button class="tab-btn${i === 0 ? ' active' : ''}" data-target="${c.id}">${c.name}</button>`)
-    .join('\n');
+    .map(
+      (c, i) =>
+        `<button class="tab-btn${i === 0 ? " active" : ""}" data-target="${c.id}">${c.name}</button>`,
+    )
+    .join("\n");
 
-  const tabPanels = categories.map((c, i) => {
-    const cards = c.movies.length
-      ? c.movies.map(m => {
-          const poster = m.Poster && m.Poster !== 'N/A' ? m.Poster : NO_POSTER_SVG;
-          return `
+  const tabPanels = categories
+    .map((c, i) => {
+      const cards = c.movies.length
+        ? c.movies
+            .map((m) => {
+              const poster =
+                m.Poster && m.Poster !== "N/A" ? m.Poster : NO_POSTER_SVG;
+              return `
         <div class="card">
           <div class="card-poster">
             <img src="${poster}" alt="${m.Title}" loading="lazy" onerror="this.src='${NO_POSTER_SVG}'"/>
@@ -48,11 +79,13 @@ function renderHTML(categories) {
             <span class="year">${m.Year}</span>
           </div>
         </div>`;
-        }).join('\n')
-      : '<p class="no-results">No se encontraron películas.</p>';
+            })
+            .join("\n")
+        : '<p class="no-results">No se encontraron películas.</p>';
 
-    return `<div class="tab-panel${i === 0 ? ' active' : ''}" id="${c.id}">\n<div class="grid">${cards}</div>\n</div>`;
-  }).join('\n');
+      return `<div class="tab-panel${i === 0 ? " active" : ""}" id="${c.id}">\n<div class="grid">${cards}</div>\n</div>`;
+    })
+    .join("\n");
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -195,16 +228,21 @@ function renderHTML(categories) {
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
 
-app.get('/', async (_req, res) => {
+app.get("/", async (_req, res) => {
   if (!OMDB_API_KEY) {
-    return res.status(500).send('OMDB_API_KEY no configurada.');
+    return res.status(500).send("OMDB_API_KEY no configurada.");
   }
   const results = await Promise.all(
-    CATEGORIES.map(async cat => ({ ...cat, movies: await fetchMovies(cat.query) }))
+    CATEGORIES.map(async (cat) => ({
+      ...cat,
+      movies: await fetchMovies(cat.query),
+    })),
   );
   res.send(renderHTML(results));
 });
 
-app.listen(port, '0.0.0.0', () => console.log(`cine escuchando en puerto ${port}`));
+app.listen(port, "0.0.0.0", () =>
+  console.log(`cine escuchando en puerto ${port}`),
+);
