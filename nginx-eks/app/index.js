@@ -14,6 +14,9 @@ const CATEGORIES = [
   { id: 'animation', name: 'Animación',         query: 'pixar animation disney' },
 ];
 
+// SVG inline placeholder: evita dependencia de servicios externos como via.placeholder.com (caído desde 2023)
+const NO_POSTER_SVG = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='445' viewBox='0 0 300 445'%3E%3Crect width='300' height='445' fill='%231a1a2e'/%3E%3Ctext x='50%25' y='48%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='16' fill='%23e94560'%3ESin P%C3%B3ster%3C/text%3E%3C/svg%3E`;
+
 async function fetchMovies(query) {
   try {
     const url = `https://www.omdbapi.com/?s=${encodeURIComponent(query)}&type=movie&apikey=${OMDB_API_KEY}`;
@@ -34,11 +37,11 @@ function renderHTML(categories) {
   const tabPanels = categories.map((c, i) => {
     const cards = c.movies.length
       ? c.movies.map(m => {
-          const poster = m.Poster && m.Poster !== 'N/A' ? m.Poster : 'https://via.placeholder.com/300x445/1a1a2e/e94560?text=Sin+Póster';
+          const poster = m.Poster && m.Poster !== 'N/A' ? m.Poster : NO_POSTER_SVG;
           return `
         <div class="card">
           <div class="card-poster">
-            <img src="${poster}" alt="${m.Title}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x445/1a1a2e/e94560?text=Sin+Póster'"/>
+            <img src="${poster}" alt="${m.Title}" loading="lazy" onerror="this.src='${NO_POSTER_SVG}'"/>
           </div>
           <div class="card-info">
             <h3>${m.Title}</h3>
