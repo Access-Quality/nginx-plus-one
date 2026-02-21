@@ -470,9 +470,9 @@ jobs:
 
       - name: Verify NIC deployment
         run: |
-          kubectl rollout status deployment/nginx-ingress \
+          kubectl rollout status deployment/nginx-ingress-controller \
             -n nginx-ingress --timeout=3m
-          kubectl get svc nginx-ingress -n nginx-ingress
+          kubectl get svc nginx-ingress-controller -n nginx-ingress
 
   # ─────────────────────────────────────────────
   # Job 6 – Deploy the app
@@ -566,7 +566,7 @@ jobs:
         run: |
           echo "──────────────────────────────────────────────"
           echo "NGINX Plus Ingress external hostname:"
-          HOSTNAME=$(kubectl get svc nginx-ingress \
+          HOSTNAME=$(kubectl get svc nginx-ingress-controller \
             -n nginx-ingress \
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           echo "${HOSTNAME}"
