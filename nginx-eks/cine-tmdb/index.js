@@ -78,9 +78,58 @@ async function fetchMovies(genreId) {
   }
 }
 
+// ── Build stamp ──────────────────────────────────────────────────────────────
+const BUILD_TIME = new Date().toISOString();
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+app.get("/healthz", (_req, res) => res.json({ status: "ok", build: BUILD_TIME }));
+
+/**
+ * Endpoint de diagnóstico — abre en el browser para ver qué pasa sin kubectl.
+ * GET /api/debug
+ */
+app.get("/api/debug", async (req, res) => {
+  const keyPresent = !!TMDB_API_KEY;
+  const keyLen     = TMDB_API_KEY ? TMDB_API_KEY.length : 0;
+  const isJWT      = keyLen > 100 || (TMDB_API_KEY || "").startsWith("eyJ");
+  const authMethod = !keyPresent ? "none" : isJWT ? "Bearer" : "api_key_param";
+
+  let tmdbTest = { ok: false, status: null, error: null, resultCount: 0 };
+  if (keyPresent) {
+    try {
+      const ctrl  = new AbortController();
+      const tOut  = setTimeout(() => ctrl.abort(), 8000);
+      const qp    = isJWT ? "" : `&api_key=${TMDB_API_KEY}`;
+      const hdrs  = { Accept: "application/json",
+                      ...(isJWT ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {}) };
+      const r     = await fetch(
+        `${TMDB_BASE}/discover/movie?with_genres=28&sort_by=popularity.desc&language=es-MX&page=1${qp}`,
+        { signal: ctrl.signal, headers: hdrs }
+      );
+      clearTimeout(tOut);
+      tmdbTest.status = r.status;
+      tmdbTest.ok = r.ok;
+      if (r.ok) {
+        const d = await r.json();
+        tmdbTest.resultCount = Array.isArray(d.results) ? d.results.length : 0;
+      } else {
+        tmdbTest.error = await r.text().catch(() => "");
+      }
+    } catch (e) {
+      tmdbTest.error = e.message;
+    }
+  }
+
+  res.json({
+    build:      BUILD_TIME,
+    nodeVersion: process.version,
+    keyPresent,
+    keyLength:  keyLen,
+    authMethod,
+    tmdbTest,
+  });
+});
 
 /**
  * API endpoint: el cliente llama esto al hacer click en un tab.
@@ -272,6 +321,7 @@ app.get("/", (_req, res) => {
   <footer>
     Datos provistos por <a href="https://www.themoviedb.org" target="_blank">The Movie Database (TMDB)</a>
     &middot; cine-tmdb.example.com
+    &middot; <span style="font-size:.72rem;color:#94a3b8">build: ${BUILD_TIME}</span>
   </footer>
 
   <script>
