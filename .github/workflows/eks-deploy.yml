@@ -164,7 +164,7 @@ jobs:
           DOCKERFILE="nginx-plus-one-eks/docker/nginx-nic/Dockerfile"
           echo "==> Dockerfile path: ${DOCKERFILE}"
           echo "==> Dockerfile exists: $(test -f "${DOCKERFILE}" && echo YES || echo NO)"
-          NIC_VERSION=$(grep 'ARG NIC_VERSION' "${DOCKERFILE}" \
+          NIC_VERSION=$(grep '^ARG NIC_VERSION' "${DOCKERFILE}" \
             | head -1 | cut -d= -f2 | tr -d '[:space:]')
           echo "==> NIC_VERSION parsed: '${NIC_VERSION}'"
           if [[ -z "${NIC_VERSION}" ]]; then
