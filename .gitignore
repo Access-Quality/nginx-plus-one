@@ -21,3 +21,5 @@
 **/*.tfstate.*
 **/crash.log
 **/*.tfplan
+# NAP v5 compiled bundle — generated in CI, not committed
+**/cine-waf.tgz

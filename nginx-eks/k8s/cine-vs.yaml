@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# NAP WAF v5 — Policy + VirtualServer for cine.example.com
+#
+# NAP WAF v5 requires VirtualServer resources (Ingress annotations are NOT
+# supported for v5). The Policy CRD references the pre-compiled .tgz bundle
+# embedded in the NIC image at /etc/app_protect/bundles/cine-waf.tgz.
+#
+# Ref: https://docs.nginx.com/nginx-ingress-controller/integrations/app-protect-waf-v5/configuration/
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: k8s.nginx.org/v1
+kind: Policy
+metadata:
+  name: waf-policy
+  namespace: cine
+spec:
+  waf:
+    enable: true
+    apBundle: "cine-waf.tgz"        # Bundle embedded in the NIC image
+    securityLogs:
+      - enable: true
+        logDest: "stderr"            # Security events visible in kubectl logs
+---
+apiVersion: k8s.nginx.org/v1
+kind: VirtualServer
+metadata:
+  name: cine
+  namespace: cine
+spec:
+  host: cine.example.com
+  policies:
+    - name: waf-policy
+  upstreams:
+    - name: cine
+      service: cine
+      port: 80
+  routes:
+    - path: /
+      action:
+        pass: cine

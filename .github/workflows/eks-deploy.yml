@@ -155,28 +155,49 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull official NIC image, retag and push to GHCR
-        id: meta
+      - name: Pull NIC base image via mTLS
         run: |
-          # The official NIC+NAP WAF image already ships nginx-agent.
-          # No custom Dockerfile needed — just retag and push to a registry
-          # that the EKS cluster can pull from.
           DOCKERFILE="nginx-plus-one-eks/docker/nginx-nic/Dockerfile"
-          echo "==> Dockerfile path: ${DOCKERFILE}"
-          echo "==> Dockerfile exists: $(test -f "${DOCKERFILE}" && echo YES || echo NO)"
           NIC_VERSION=$(grep '^ARG NIC_VERSION' "${DOCKERFILE}" \
             | head -1 | cut -d= -f2 | tr -d '[:space:]')
-          echo "==> NIC_VERSION parsed: '${NIC_VERSION}'"
           if [[ -z "${NIC_VERSION}" ]]; then
             echo "ERROR: could not parse NIC_VERSION from ${DOCKERFILE}"
             exit 1
           fi
           SRC="private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}"
-          IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
-          echo "==> SRC:   ${SRC}"
-          echo "==> IMAGE: ${IMAGE}"
+          echo "==> Pulling base image: ${SRC}"
           docker pull "${SRC}"
-          docker tag  "${SRC}" "${IMAGE}"
+
+      - name: Compile NAP WAF v5 policy bundle
+        run: |
+          # Uses private-registry.nginx.com/nap/waf-compiler — same mTLS auth.
+          # Output: cine-waf.tgz in the Docker build context (will be COPYed
+          # into the image by the Dockerfile).
+          DOCKERFILE="nginx-plus-one-eks/docker/nginx-nic/Dockerfile"
+          COMPILER_VERSION=$(grep '^ARG COMPILER_VERSION' "${DOCKERFILE}" \
+            | head -1 | cut -d= -f2 | tr -d '[:space:]')
+          echo "==> WAF compiler version: ${COMPILER_VERSION}"
+          docker run --rm \
+            -v "$PWD/nginx-plus-one-eks/docker/nginx-nic":/workspace \
+            "private-registry.nginx.com/nap/waf-compiler:${COMPILER_VERSION}" \
+            -p /workspace/waf-policy.json \
+            -o /workspace/cine-waf.tgz
+          echo "==> Bundle: $(ls -lh nginx-plus-one-eks/docker/nginx-nic/cine-waf.tgz)"
+
+      - name: Build and push NIC image with WAF bundle
+        id: meta
+        run: |
+          # docker build (not buildx) reuses the already-pulled base image from
+          # the local daemon cache — no second mTLS pull needed.
+          DOCKERFILE="nginx-plus-one-eks/docker/nginx-nic/Dockerfile"
+          NIC_VERSION=$(grep '^ARG NIC_VERSION' "${DOCKERFILE}" \
+            | head -1 | cut -d= -f2 | tr -d '[:space:]')
+          IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
+          echo "==> IMAGE: ${IMAGE}"
+          docker build \
+            --build-arg NIC_VERSION="${NIC_VERSION}" \
+            --tag "${IMAGE}" \
+            nginx-plus-one-eks/docker/nginx-nic/
           docker push "${IMAGE}"
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "NIC image pushed: ${IMAGE}"
@@ -462,11 +483,13 @@ jobs:
           echo "=== Events in nginx-ingress namespace ==="
           kubectl get events -n nginx-ingress --sort-by='.lastTimestamp' | tail -30
 
-      - name: Apply WAF APPolicy + APLogConf
+      - name: Remove obsolete NAP v4 CRDs (APPolicy/APLogConf not used with NAP v5)
         run: |
-          kubectl apply -f nginx-plus-one-eks/k8s/waf/waf-logconf.yaml
-          kubectl apply -f nginx-plus-one-eks/k8s/waf/waf-policy.yaml
-          echo "WAF policies applied."
+          # NAP WAF v5 uses pre-compiled bundles baked into the NIC image.
+          # APPolicy + APLogConf CRDs only apply to NAP v4.
+          # The policy is activated via a k8s.nginx.org/v1 Policy CRD
+          # referencing the bundle, applied per-namespace in the deploy-app job.
+          echo "NAP v5 bundle is embedded in the NIC image — no APPolicy CRDs to apply."
 
       - name: Verify NIC deployment
         run: |
@@ -522,7 +545,10 @@ jobs:
       - name: Apply Kubernetes manifests
         run: |
           kubectl apply -f nginx-eks/k8s/app.yaml
-          kubectl apply -f nginx-eks/k8s/ingress.yaml
+          # NAP WAF v5 requires VirtualServer (Ingress annotations not supported).
+          # Delete any stale Ingress before applying VirtualServer for same host.
+          kubectl delete ingress cine -n cine --ignore-not-found
+          kubectl apply -f nginx-eks/k8s/cine-vs.yaml
           echo "Manifests applied. Verifying deployment exists..."
           kubectl get deployment cine -n cine
 
@@ -554,7 +580,8 @@ jobs:
       - name: Apply cine-tmdb Kubernetes manifests
         run: |
           kubectl apply -f nginx-eks/k8s/cine-tmdb-app.yaml
-          kubectl apply -f nginx-eks/k8s/cine-tmdb-ingress.yaml
+          kubectl delete ingress cine-tmdb -n cine-tmdb --ignore-not-found
+          kubectl apply -f nginx-eks/k8s/cine-tmdb-vs.yaml
           kubectl get deployment cine-tmdb -n cine-tmdb
 
       - name: Wait for Deployment rollout (cine-tmdb)
