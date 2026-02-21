@@ -400,21 +400,27 @@ jobs:
 
       - name: Create NGINX Plus license secret
         run: |
+          # Write values to temp files to safely handle newlines / special chars
+          printf '%s' "${{ secrets.LICENSE_JWT }}" > /tmp/license.jwt
+          printf '%s' "${{ secrets.LICENSE_KEY }}" > /tmp/license.key
           kubectl create secret generic nginx-license \
-            --from-literal=license.jwt=${{ secrets.LICENSE_JWT }} \
-            --from-literal=license.key=${{ secrets.LICENSE_KEY }} \
+            --from-file=license.jwt=/tmp/license.jwt \
+            --from-file=license.key=/tmp/license.key \
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
+          rm -f /tmp/license.jwt /tmp/license.key
 
       - name: Create NGINX One data plane key secret
         # Secret key must be 'dataplane.key' — required by the Helm chart
         # nginxAgent.dataplaneKeySecretName value.
         # Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
         run: |
+          printf '%s' "${{ secrets.DATA_PLANE_KEY }}" > /tmp/dataplane.key
           kubectl create secret generic nginx-one-token \
-            --from-literal=dataplane.key=${{ secrets.DATA_PLANE_KEY }} \
+            --from-file=dataplane.key=/tmp/dataplane.key \
             --namespace nginx-ingress \
             --dry-run=client -o yaml | kubectl apply -f -
+          rm -f /tmp/dataplane.key
 
       - name: Install NGINX Plus NIC with App Protect WAF
         run: |
