@@ -19,22 +19,31 @@ FROM private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}
 
 USER root
 
-# ── Install nginx-agent from packages.nginx.org (OSS public repo) ────────────
-# We install the package only — no registration at build time.
-# The agent registers with NGINX One at runtime via NGINX_AGENT_SERVER_TOKEN
-# (injected from the K8s Secret nginx-one-token).
-# packages.nginx.org is public; no client cert required.
-# The base NIC image already ships /usr/share/keyrings/nginx-archive-keyring.gpg.
-RUN set -eux; \
+# ── Install nginx-agent from NGINX Plus private repo (pkgs.nginx.com) ────────
+# Requires client cert/key (nginx-repo.crt / nginx-repo.key) injected via
+# BuildKit secrets so credentials are never baked into the image.
+# pkgs.nginx.com/nginx-agent only publishes Ubuntu packages; 'ubuntu jammy'
+# .deb packages install correctly on Debian 12 (bookworm).
+RUN --mount=type=secret,id=nginx_crt,dst=/etc/ssl/nginx/nginx-repo.crt,mode=0444 \
+    --mount=type=secret,id=nginx_key,dst=/etc/ssl/nginx/nginx-repo.key,mode=0444 \
+    set -eux; \
     apt-get update -qq; \
-    apt-get install -y --no-install-recommends curl ca-certificates lsb-release; \
-    OS_ID=$(. /etc/os-release && echo "${ID}"); \
-    CODENAME=$(lsb_release -cs); \
-    printf "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-https://packages.nginx.org/nginx-agent/${OS_ID} ${CODENAME} agent\n" \
+    apt-get install -y --no-install-recommends ca-certificates apt-transport-https gnupg wget; \
+    # Client-cert config for apt to authenticate with pkgs.nginx.com
+    printf 'Acquire::https::pkgs.nginx.com::SslCert "/etc/ssl/nginx/nginx-repo.crt";\nAcquire::https::pkgs.nginx.com::SslKey  "/etc/ssl/nginx/nginx-repo.key";\n' \
+        > /etc/apt/apt.conf.d/90nginx; \
+    # Signing key (already binary in base image; write to a separate file)
+    wget -qO /tmp/nginx_signing.key https://cs.nginx.com/static/keys/nginx_signing.key; \
+    cp /tmp/nginx_signing.key /usr/share/keyrings/nginx-agent-keyring.gpg; \
+    rm -f /tmp/nginx_signing.key; \
+    # nginx-agent is only published for Ubuntu on pkgs.nginx.com;
+    # jammy .deb packages are compatible with Debian 12 (bookworm).
+    printf 'deb [signed-by=/usr/share/keyrings/nginx-agent-keyring.gpg] https://pkgs.nginx.com/nginx-agent/ubuntu jammy agent\n' \
         > /etc/apt/sources.list.d/nginx-agent.list; \
     apt-get update -qq; \
     apt-get install -y --no-install-recommends nginx-agent; \
+    # Remove apt credential snippet — must NOT be baked into the final image
+    rm -f /etc/apt/apt.conf.d/90nginx; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 

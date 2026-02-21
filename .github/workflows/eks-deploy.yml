@@ -162,6 +162,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Write repo credentials to temp files (BuildKit secrets)
+        run: |
+          printf '%s' "${{ secrets.NGINX_REPO_CRT }}" > /tmp/nginx-repo.crt
+          printf '%s' "${{ secrets.NGINX_REPO_KEY }}" > /tmp/nginx-repo.key
+
       - name: Build and push NGINX Plus NIC image
         id: meta
         run: |
@@ -171,6 +176,8 @@ jobs:
           # docker buildx with docker-container driver runs in an isolated
           # BuildKit container that does NOT inherit host certs.
           DOCKER_BUILDKIT=1 docker build \
+            --secret id=nginx_crt,src=/tmp/nginx-repo.crt \
+            --secret id=nginx_key,src=/tmp/nginx-repo.key \
             --file nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
             --tag "${IMAGE}" \
             nginx-plus-one-eks/docker/nginx-nic/
@@ -178,9 +185,11 @@ jobs:
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "NIC image pushed: ${IMAGE}"
 
-      - name: Clean up Docker mTLS certs
+      - name: Clean up credential files and Docker mTLS certs
         if: always()
-        run: sudo rm -rf /etc/docker/certs.d/private-registry.nginx.com
+        run: |
+          shred -u /tmp/nginx-repo.crt /tmp/nginx-repo.key 2>/dev/null || true
+          sudo rm -rf /etc/docker/certs.d/private-registry.nginx.com
 
   # ─────────────────────────────────────────────
   # Job 3 – Terraform Plan
