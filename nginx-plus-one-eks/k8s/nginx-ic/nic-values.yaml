@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Helm values — NGINX Plus Ingress Controller (nginx-stable/nginx-ingress)
+# ──────────────────────────────────────────────────────────────────────────────
+# Image repository + tag are injected via --set at deploy time (GitHub Actions).
+# DATA_PLANE_KEY is injected via the "nginx-one-token" K8s Secret.
+# ──────────────────────────────────────────────────────────────────────────────
+
+controller:
+  # ── NGINX Plus license ──────────────────────────────────────────────────────
+  nginxplus: true
+
+  # ── Image (repo + tag overridden in workflow via --set) ─────────────────────
+  image:
+    repository: ghcr.io/ocpdata/nginx-nic # overridden with --set
+    tag: "latest" # overridden with --set
+    pullPolicy: Always
+
+  # ── Pull secret for GHCR ────────────────────────────────────────────────────
+  serviceAccount:
+    imagePullSecretName: ghcr-secret
+
+  # ── NGINX App Protect WAF ───────────────────────────────────────────────────
+  appprotect:
+    enable: true
+
+  # Keep the same IngressClass name so existing Ingress resources work unchanged
+  ingressClass:
+    name: nginx
+    setAsDefaultIngress: true
+
+  # ── Service (AWS NLB, internet-facing) ──────────────────────────────────────
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+  # ── NGINX One enrollment token injected from K8s Secret ─────────────────────
+  pod:
+    extraEnvs:
+      - name: NGINX_AGENT_SERVER_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: nginx-one-token
+            key: data-plane-key
+
+  # ── NGINX global config tweaks ──────────────────────────────────────────────
+  config:
+    entries:
+      worker-processes: "auto"
+      error-log: "stderr notice"
+
+  # ── Healthcheck / probes ─────────────────────────────────────────────────────
+  readyStatus:
+    enable: true
+    port: 8081
+
+  # ── Resource requests ────────────────────────────────────────────────────────
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi

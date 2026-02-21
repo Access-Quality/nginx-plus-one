@@ -1,0 +1,92 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# NGINX App Protect WAF Policy — cine namespace
+# Applied to both cine.example.com and cine-tmdb.example.com via Ingress
+# annotation:  nginx.org/app-protect-policy: "<namespace>/waf-policy"
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: appprotect.f5.com/v1beta1
+kind: APPolicy
+metadata:
+  name: waf-policy
+  namespace: cine
+spec:
+  policy:
+    name: waf-policy
+    template:
+      name: POLICY_TEMPLATE_NGINX_BASE
+    applicationLanguage: utf-8
+    enforcementMode: blocking
+    # ── Signature sets ────────────────────────────────────────────────────────
+    signature-sets:
+      - name: All Signatures
+        block: true
+        alarm: true
+      - name: High Accuracy Signatures
+        block: true
+        alarm: true
+    # ── Violations ────────────────────────────────────────────────────────────
+    blocking-settings:
+      violations:
+        - name: VIOL_ATTACK_SIGNATURE
+          alarm: true
+          block: true
+        - name: VIOL_SQL_INJECTION
+          alarm: true
+          block: true
+        - name: VIOL_XSS
+          alarm: true
+          block: true
+        - name: VIOL_FILETYPE
+          alarm: true
+          block: false
+        - name: VIOL_HTTP_RESPONSE_STATUS
+          alarm: true
+          block: false
+    # ── Allow standard HTTP methods only ─────────────────────────────────────
+    methods:
+      - name: GET
+      - name: POST
+      - name: HEAD
+      - name: OPTIONS
+---
+# ── Same policy mirrored in cine-tmdb namespace ───────────────────────────────
+apiVersion: appprotect.f5.com/v1beta1
+kind: APPolicy
+metadata:
+  name: waf-policy
+  namespace: cine-tmdb
+spec:
+  policy:
+    name: waf-policy
+    template:
+      name: POLICY_TEMPLATE_NGINX_BASE
+    applicationLanguage: utf-8
+    enforcementMode: blocking
+    signature-sets:
+      - name: All Signatures
+        block: true
+        alarm: true
+      - name: High Accuracy Signatures
+        block: true
+        alarm: true
+    blocking-settings:
+      violations:
+        - name: VIOL_ATTACK_SIGNATURE
+          alarm: true
+          block: true
+        - name: VIOL_SQL_INJECTION
+          alarm: true
+          block: true
+        - name: VIOL_XSS
+          alarm: true
+          block: true
+        - name: VIOL_FILETYPE
+          alarm: true
+          block: false
+        - name: VIOL_HTTP_RESPONSE_STATUS
+          alarm: true
+          block: false
+    methods:
+      - name: GET
+      - name: POST
+      - name: HEAD
+      - name: OPTIONS

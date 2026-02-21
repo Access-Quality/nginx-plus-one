@@ -2,6 +2,8 @@
 /*
 !/nginx-eks/
 !/nginx-eks/**
+!/nginx-plus-one-eks/
+!/nginx-plus-one-eks/**
 !/nginx-plus-one-vm/
 !/nginx-plus-one-vm/**
 !/.gitignore

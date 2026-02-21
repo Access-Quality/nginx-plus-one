@@ -121,6 +121,61 @@ jobs:
           echo "Image pushed: ${IMAGE}"
 
   # ─────────────────────────────────────────────
+  # Job 2c – Build & push NGINX Plus NIC image
+  #          (NIC + NAP WAF + NGINX Agent)
+  # ─────────────────────────────────────────────
+  build-nic:
+    name: Build & Push NGINX Plus NIC Image
+    runs-on: ubuntu-latest
+    needs: setup
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to NGINX private registry (JWT)
+        run: |
+          echo "${{ secrets.LICENSE_JWT }}" | \
+            docker login private-registry.nginx.com \
+              --username=none --password-stdin
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write repo credentials to temp files
+        run: |
+          echo "${{ secrets.NGINX_REPO_CRT }}" > /tmp/nginx-repo.crt
+          echo "${{ secrets.NGINX_REPO_KEY }}" > /tmp/nginx-repo.key
+
+      - name: Build and push NGINX Plus NIC image
+        id: meta
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/nginx-nic:${{ github.sha }}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --secret id=nginx_crt,src=/tmp/nginx-repo.crt \
+            --secret id=nginx_key,src=/tmp/nginx-repo.key \
+            --file nginx-plus-one-eks/docker/nginx-nic/Dockerfile \
+            --tag "${IMAGE}" \
+            --push \
+            nginx-plus-one-eks/docker/nginx-nic/
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+          echo "NIC image pushed: ${IMAGE}"
+
+      - name: Shred credential files
+        if: always()
+        run: shred -u /tmp/nginx-repo.crt /tmp/nginx-repo.key 2>/dev/null || true
+
+  # ─────────────────────────────────────────────
   # Job 3 – Terraform Plan
   # ─────────────────────────────────────────────
   terraform-plan:
@@ -282,14 +337,18 @@ jobs:
           echo "cluster_region=$(terraform output -raw cluster_region)" >> $GITHUB_OUTPUT
 
   # ─────────────────────────────────────────────
-  # Job 5 – Install NGINX Ingress Controller
+  # Job 5 – Install NGINX Plus Ingress Controller
+  #          (NIC + App Protect WAF + NGINX Agent)
   # ─────────────────────────────────────────────
   setup-ingress:
-    name: Install NGINX Ingress Controller
+    name: Install NGINX Plus NIC (NAP WAF + NGINX One Agent)
     runs-on: ubuntu-latest
-    needs: terraform-apply
+    needs: [terraform-apply, build-nic]
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -306,17 +365,64 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install NGINX Ingress Controller
+      - name: Uninstall OSS ingress-nginx (if present)
         run: |
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
+            echo "Removing OSS ingress-nginx..."
+            helm uninstall ingress-nginx -n ingress-nginx --wait
+          else
+            echo "OSS ingress-nginx not found — skipping uninstall."
+          fi
+
+      - name: Create nginx-ingress namespace
+        run: |
+          kubectl create namespace nginx-ingress --dry-run=client -o yaml \
+            | kubectl apply -f -
+
+      - name: Create GHCR imagePullSecret for NIC
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.repository_owner }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --namespace nginx-ingress \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create NGINX One enrollment token secret
+        run: |
+          kubectl create secret generic nginx-one-token \
+            --from-literal=data-plane-key=${{ secrets.DATA_PLANE_KEY }} \
+            --namespace nginx-ingress \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Install NGINX Plus NIC with App Protect WAF
+        run: |
+          NIC_IMAGE="${{ needs.build-nic.outputs.image }}"
+          if [[ -z "${NIC_IMAGE}" ]]; then
+            echo "ERROR: build-nic output image is empty"
+            exit 1
+          fi
+          helm repo add nginx-stable https://helm.nginx.com/stable
           helm repo update
-          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            --namespace ingress-nginx \
-            --create-namespace \
-            --set controller.service.type=LoadBalancer \
-            --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+          helm upgrade --install nginx-ingress nginx-stable/nginx-ingress \
+            --namespace nginx-ingress \
+            --values nginx-plus-one-eks/k8s/nginx-ic/nic-values.yaml \
+            --set controller.image.repository="$(cut -d: -f1 <<< "${NIC_IMAGE}")" \
+            --set controller.image.tag="$(cut -d: -f2 <<< "${NIC_IMAGE}")" \
             --wait \
-            --timeout 8m
+            --timeout 10m
+
+      - name: Apply WAF APPolicy + APLogConf
+        run: |
+          kubectl apply -f nginx-plus-one-eks/k8s/waf/waf-logconf.yaml
+          kubectl apply -f nginx-plus-one-eks/k8s/waf/waf-policy.yaml
+          echo "WAF policies applied."
+
+      - name: Verify NIC deployment
+        run: |
+          kubectl rollout status deployment/nginx-ingress \
+            -n nginx-ingress --timeout=3m
+          kubectl get svc nginx-ingress -n nginx-ingress
 
   # ─────────────────────────────────────────────
   # Job 6 – Deploy the app
@@ -324,7 +430,8 @@ jobs:
   deploy-app:
     name: Deploy Cine + Cine-TMDB
     runs-on: ubuntu-latest
-    needs: [terraform-apply, setup-ingress, build-image, build-image-tmdb]
+    needs:
+      [terraform-apply, setup-ingress, build-image, build-image-tmdb, build-nic]
 
     steps:
       - name: Checkout
@@ -408,9 +515,9 @@ jobs:
       - name: Show Ingress LoadBalancer hostname and IP
         run: |
           echo "──────────────────────────────────────────────"
-          echo "NGINX Ingress external hostname:"
-          HOSTNAME=$(kubectl get svc ingress-nginx-controller \
-            -n ingress-nginx \
+          echo "NGINX Plus Ingress external hostname:"
+          HOSTNAME=$(kubectl get svc nginx-ingress \
+            -n nginx-ingress \
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           echo "${HOSTNAME}"
 

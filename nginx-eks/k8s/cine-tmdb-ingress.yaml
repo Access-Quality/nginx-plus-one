@@ -4,7 +4,11 @@ metadata:
   name: cine-tmdb
   namespace: cine-tmdb
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    # NGINX Plus IC WAF — APPolicy + log in same namespace
+    nginx.org/app-protect-policy: "waf-policy"
+    nginx.org/app-protect-security-log-enable: "true"
+    nginx.org/app-protect-security-log: "waf-logconf"
+    nginx.org/app-protect-security-log-destination: "syslog:server=127.0.0.1:514"
 spec:
   ingressClassName: nginx
   rules:
