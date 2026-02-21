@@ -26,11 +26,21 @@ RUN --mount=type=secret,id=nginx_crt,dst=/etc/ssl/nginx/nginx-repo.crt,mode=0444
     apt-get update -qq; \
     apt-get install -y --no-install-recommends \
         ca-certificates apt-transport-https gnupg lsb-release wget; \
-    # Import NGINX signing key
-    wget -qO- https://cs.nginx.com/static/keys/nginx_signing.key \
-        | gpg --batch --no-tty --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg; \
+    # Import NGINX signing key.
+    # The key may be ASCII-armored or already binary — handle both formats.
+    # Write to a separate keyring file to avoid clobbering the one already
+    # present in the base NIC image.
+    wget -qO /tmp/nginx_signing.key https://cs.nginx.com/static/keys/nginx_signing.key; \
+    if gpg --batch --no-tty --list-packets /tmp/nginx_signing.key 2>/dev/null \
+            | grep -q 'public key'; then \
+        cp /tmp/nginx_signing.key /usr/share/keyrings/nginx-agent-keyring.gpg; \
+    else \
+        gpg --batch --no-tty --yes --dearmor \
+            -o /usr/share/keyrings/nginx-agent-keyring.gpg /tmp/nginx_signing.key; \
+    fi; \
+    rm -f /tmp/nginx_signing.key; \
     # Add nginx-agent package repo (authenticated via nginx-repo.crt / .key)
-    printf "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+    printf "deb [signed-by=/usr/share/keyrings/nginx-agent-keyring.gpg] \
 https://pkgs.nginx.com/nginx-agent/ubuntu %s agent\n" "$(lsb_release -cs)" \
         > /etc/apt/sources.list.d/nginx-agent.list; \
     # Download apt config snippet that injects the client cert for apt-get
