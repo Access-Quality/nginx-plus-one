@@ -29,5 +29,8 @@ ARG COMPILER_VERSION=5.11.2
 FROM private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}
 
 # Pre-compiled NAP v5 policy bundle (compiled in CI from waf-policy.json).
-# NIC loads all .tgz files from /etc/app_protect/bundles/ at startup.
-COPY cine-waf.tgz /etc/app_protect/bundles/cine-waf.tgz
+# NIC resolves bundle names to /etc/nginx/waf/bundles/ — NOT /etc/app_protect/bundles/
+# which is the standalone NAP path. Use the NIC-specific path here.
+USER root
+RUN mkdir -p /etc/nginx/waf/bundles
+COPY cine-waf.tgz /etc/nginx/waf/bundles/cine-waf.tgz
