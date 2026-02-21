@@ -15,6 +15,6 @@
 #
 # Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
 # ──────────────────────────────────────────────────────────────────────────────
-ARG NIC_VERSION=3.7.2
+ARG NIC_VERSION=5.3.4
 
 FROM private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:${NIC_VERSION}
