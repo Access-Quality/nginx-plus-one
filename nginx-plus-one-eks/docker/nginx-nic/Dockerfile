@@ -39,9 +39,13 @@ RUN --mount=type=secret,id=nginx_crt,dst=/etc/ssl/nginx/nginx-repo.crt,mode=0444
             -o /usr/share/keyrings/nginx-agent-keyring.gpg /tmp/nginx_signing.key; \
     fi; \
     rm -f /tmp/nginx_signing.key; \
-    # Add nginx-agent package repo (authenticated via nginx-repo.crt / .key)
+    # Add nginx-agent package repo (authenticated via nginx-repo.crt / .key).
+    # Detect OS (ubuntu or debian) so the correct repo path is used.
+    # The base NIC NAP image is Debian-based; lsb_release returns 'bookworm'.
+    OS_ID=$(. /etc/os-release && echo "${ID}"); \
+    CODENAME=$(lsb_release -cs); \
     printf "deb [signed-by=/usr/share/keyrings/nginx-agent-keyring.gpg] \
-https://pkgs.nginx.com/nginx-agent/ubuntu %s agent\n" "$(lsb_release -cs)" \
+https://pkgs.nginx.com/nginx-agent/${OS_ID} %s agent\n" "${CODENAME}" \
         > /etc/apt/sources.list.d/nginx-agent.list; \
     # Download apt config snippet that injects the client cert for apt-get
     wget -q \
