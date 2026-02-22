@@ -448,6 +448,14 @@ jobs:
             --namespace nginx-ingress
           rm -f /tmp/dataplane.key
 
+      - name: Delete stale NIC LoadBalancer service (force CCM re-provisioning)
+        run: |
+          # If the service already exists from a previous failed run, the Cloud
+          # Controller Manager will NOT retry provisioning the NLB automatically.
+          # Deleting it here forces a clean creation with the correct subnet tags.
+          kubectl delete svc nginx-ingress-controller -n nginx-ingress --ignore-not-found
+          echo "Stale service deleted (if it existed). Helm will recreate it."
+
       - name: Install NGINX Plus NIC with App Protect WAF
         run: |
           NIC_IMAGE="${{ needs.build-nic.outputs.image }}"
@@ -595,6 +603,13 @@ jobs:
       - name: Show Ingress LoadBalancer hostname and IP
         run: |
           echo "──────────────────────────────────────────────"
+          echo "=== NIC Service (current state) ==="
+          kubectl get svc nginx-ingress-controller -n nginx-ingress -o wide
+          echo ""
+          echo "=== Service events (CCM provisioning activity) ==="
+          kubectl describe svc nginx-ingress-controller -n nginx-ingress \
+            | grep -A 40 '^Events:' || echo "(no events found)"
+          echo ""
           echo "NGINX Plus Ingress external hostname:"
           HOSTNAME=$(kubectl get svc nginx-ingress-controller \
             -n nginx-ingress \
