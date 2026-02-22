@@ -1,4 +1,4 @@
-name: Deploy EKS + Cine
+name: Deploy EKS2 + Cine
 run-name: "Deploy EKS + Cine (${{ github.ref_name }})"
 
 on:
