@@ -23,10 +23,11 @@ module "vpc" {
   enable_dns_support      = true
   map_public_ip_on_launch = true
 
-  # Tags required by the AWS Load Balancer Controller / NGINX Ingress
+  # Tags required by the in-tree cloud provider and/or AWS Load Balancer Controller
   public_subnet_tags = {
-    "kubernetes.io/role/elb"            = 1
-    "kubernetes.io/role/internal-elb"   = 1
+    "kubernetes.io/role/elb"                          = 1
+    "kubernetes.io/role/internal-elb"                 = 1
+    "kubernetes.io/cluster/${var.cluster_name}"       = "shared"
   }
 }
 
