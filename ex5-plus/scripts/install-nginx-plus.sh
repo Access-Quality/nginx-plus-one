@@ -10,12 +10,10 @@
 set -euo pipefail
 
 # ── Guards ────────────────────────────────────────────────────────────────────
-for var in DATA_PLANE_KEY LICENSE_JWT; do
-  if [[ -z "${!var:-}" ]]; then
-    echo "ERROR: $var is required" >&2
-    exit 1
-  fi
-done
+if [[ -z "${DATA_PLANE_KEY:-}" ]]; then
+  echo "ERROR: DATA_PLANE_KEY is required" >&2
+  exit 1
+fi
 
 # ── System dependencies ───────────────────────────────────────────────────────
 sudo apt-get update -qq
@@ -124,9 +122,9 @@ sudo mkdir -p /opt/app_protect/config /opt/app_protect/bd_config
 sudo chown -R 101:101 /opt/app_protect
 
 # ── Login to NGINX private registry using JWT ────────────────────────────────
-# Username must be lowercase 'oauth2accesstoken' (case-sensitive)
-# Strip all whitespace/newlines from the JWT before piping to avoid 401 errors
-printf '%s' "$LICENSE_JWT" | tr -d '\n\r\t ' \
+# Read directly from the license file already placed on disk to avoid any
+# shell escaping / whitespace corruption when passing via env variable over SSH.
+sudo cat /etc/nginx/license.jwt | tr -d '\n\r\t ' \
   | sudo docker login private-registry.nginx.com -u oauth2accesstoken --password-stdin
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────

@@ -390,8 +390,7 @@ jobs:
           scp ex5-plus/scripts/install-nginx-plus.sh \
             ubuntu@${{ needs.terraform.outputs.public_ip }}:/tmp/install-nginx-plus.sh
           ssh ubuntu@${{ needs.terraform.outputs.public_ip }} \
-            "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' LICENSE_JWT='$LICENSE_JWT' \
-             bash /tmp/install-nginx-plus.sh"
+            "sudo DATA_PLANE_KEY='$DATA_PLANE_KEY' bash /tmp/install-nginx-plus.sh"
 
       - name: Upload and apply App Protect policy to /etc/app_protect
         run: |
