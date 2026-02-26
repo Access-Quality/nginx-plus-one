@@ -6,6 +6,8 @@
 !/nginx-plus-one-eks/**
 !/nginx-plus-one-vm/
 !/nginx-plus-one-vm/**
+!/ex5-plus/
+!/ex5-plus/**
 !/.gitignore
 !/README.md
 !/.github/

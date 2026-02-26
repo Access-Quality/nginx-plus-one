@@ -1,0 +1,31 @@
+version: '3.8'
+
+# NAP v5 decoupled WAF runtime
+# Both services use network_mode: host so NGINX Plus (running on host) can reach
+# waf-enforcer on 127.0.0.1:50000 and waf-config-mgr reads/writes the same
+# /opt/app_protect paths that are bind-mounted below.
+
+services:
+  waf-enforcer:
+    image: nplus-v5-waf-enforcer:latest
+    container_name: waf-enforcer
+    restart: always
+    network_mode: "host"
+    volumes:
+      # bd_config: compiled policy bundles (.tgz) — shared with waf-config-mgr
+      - /opt/app_protect/bd_config:/opt/app_protect/bd_config
+    environment:
+      # Port on which the enforcer gRPC service listens (must match
+      # app_protect_enforcer_address in nginx.conf)
+      - ENFORCER_PORT=50000
+
+  waf-config-mgr:
+    image: nplus-v5-waf-config-mgr:latest
+    container_name: waf-config-mgr
+    restart: always
+    network_mode: "host"
+    volumes:
+      # config: source policy JSON files (e.g. cinex.json)
+      - /opt/app_protect/config:/opt/app_protect/config
+      # bd_config: compiled output bundles (e.g. cinex.tgz)
+      - /opt/app_protect/bd_config:/opt/app_protect/bd_config
