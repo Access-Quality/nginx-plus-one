@@ -87,7 +87,8 @@ echo "deb [signed-by=/usr/share/keyrings/app-protect-security-updates.gpg] \
 https://pkgs.nginx.com/app-protect-security-updates/ubuntu ${codename} nginx-plus" \
   | sudo tee /etc/apt/sources.list.d/app-protect-security-updates.list
 
-# ── Repository pinning R34-R36 (Pin-Priority: 900) ───────────────────────────
+# ── Repository pinning — NGINX Plus R36 (Pin-Priority: 900) ─────────────────
+# R36 P2 (2026-02-04): latest supported release, OSS 1.29.3 base, support until Nov 2027.
 sudo tee /etc/apt/preferences.d/99nginx >/dev/null <<'EOF'
 Package: *
 Pin: origin pkgs.nginx.com
@@ -96,9 +97,8 @@ EOF
 
 sudo apt-get update -qq
 
-# ── NGINX Plus R34-R36 + App Protect module (v5.x) ───────────────────────────
-# app-protect 5.x depends on nginx-plus R30+; pin priority ensures pkgs.nginx.com wins.
-sudo apt-get install -y nginx-plus app-protect
+# Pin to R36 explicitly; app-protect version is bundled with R36.
+sudo apt-get install -y "nginx-plus=36*" app-protect
 
 # ── Load NAP module in nginx.conf ─────────────────────────────────────────────
 if ! sudo grep -qF 'load_module modules/ngx_http_app_protect_module.so;' /etc/nginx/nginx.conf; then
@@ -128,18 +128,20 @@ sudo cat /etc/nginx/license.jwt | tr -d '\n\r\t ' \
   | sudo docker login private-registry.nginx.com -u oauth2accesstoken --password-stdin
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
-# waf-enforcer: the inspection engine (replaces in-process NAP v4 broker)
-# waf-config-mgr: compiles policy JSON → .tgz bundles consumed by NGINX module
-sudo docker pull private-registry.nginx.com/nginx-app-protect/waf-enforcer:latest
-sudo docker pull private-registry.nginx.com/nginx-app-protect/waf-config-mgr:latest
+# Pin to the tag that ships bundled with NGINX Plus R36 (app-protect 36+5.x).
+# Using versioned tags avoids pulling a breaking change on re-runs.
+NAP_IMAGE_TAG="5.9.0"
+
+sudo docker pull "private-registry.nginx.com/nginx-app-protect/waf-enforcer:${NAP_IMAGE_TAG}"
+sudo docker pull "private-registry.nginx.com/nginx-app-protect/waf-config-mgr:${NAP_IMAGE_TAG}"
 
 # Tag locally for docker-compose simplicity (matches docker-compose.yaml image names)
 sudo docker tag \
-  private-registry.nginx.com/nginx-app-protect/waf-enforcer:latest \
+  "private-registry.nginx.com/nginx-app-protect/waf-enforcer:${NAP_IMAGE_TAG}" \
   nplus-v5-waf-enforcer:latest
 
 sudo docker tag \
-  private-registry.nginx.com/nginx-app-protect/waf-config-mgr:latest \
+  "private-registry.nginx.com/nginx-app-protect/waf-config-mgr:${NAP_IMAGE_TAG}" \
   nplus-v5-waf-config-mgr:latest
 
 # ── Deploy WAF containers via docker-compose ──────────────────────────────────
@@ -169,19 +171,19 @@ sudo nginx -t
 sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 
-# ── NGINX Agent 3.x ───────────────────────────────────────────────────────────
-# Install script auto-detects the latest Agent 3.x when AGENT_VERSION is not set;
-# set it explicitly to ensure we stay on 3.x as required by NGINX One Console.
+# ── NGINX Agent v3.7.0 ───────────────────────────────────────────────────────
+# v3.7.0 (2026-02-03): latest 3.x release; adds Alpine 3.23, OTel and AWS Fargate fixes.
+# Pin explicitly — NGINX One Console requires Agent 3.x (full support from July 2025).
 curl -fsSL https://agent.connect.nginx.com/nginx-agent/install \
-  | sudo DATA_PLANE_KEY="$DATA_PLANE_KEY" sh -s -- -y
+  | sudo DATA_PLANE_KEY="$DATA_PLANE_KEY" sh -s -- -y --version 3.7.0
 
-# Confirm Agent 3.x is installed
+# Confirm pinned version is installed
 agent_ver="$(nginx-agent --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+echo "NGINX Agent installed version: $agent_ver"
 major="${agent_ver%%.*}"
 if [[ -n "$major" && "$major" -lt 3 ]]; then
   echo "ERROR: nginx-agent major version is $major; 3.x is required" >&2
   exit 1
 fi
-echo "NGINX Agent version: $agent_ver"
 
 sudo systemctl enable --now nginx-agent
