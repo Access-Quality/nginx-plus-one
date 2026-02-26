@@ -9,7 +9,6 @@ permissions:
   packages: write # needed to push to ghcr.io
 
 env:
-  AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
   TF_CLOUD_ORGANIZATION: ${{ secrets.TFC_ORG }}
   TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
 
@@ -42,7 +41,7 @@ jobs:
           echo "Azure Subscription : ${SUB_ID}"
           echo "Azure Tenant       : ${TENANT}"
           echo "Azure Account      : ${ACCOUNT}"
-          echo "Location           : ${{ vars.AZURE_LOCATION }}"
+          echo "Location           : eastus (default from variables.tf)"
 
       - name: Verify Terraform Cloud token
         run: |
@@ -294,19 +293,16 @@ jobs:
           echo "Intentando importar recursos huérfanos (los errores se ignoran)..."
 
           terraform import \
-            -var="location=${{ vars.AZURE_LOCATION }}" \
             azurerm_resource_group.main \
             "/subscriptions/${SUB_ID}/resourceGroups/${RG_NAME}" \
             2>&1 | grep -v "already managed\|No changes" || true
 
           terraform import \
-            -var="location=${{ vars.AZURE_LOCATION }}" \
             azurerm_log_analytics_workspace.main \
             "/subscriptions/${SUB_ID}/resourceGroups/${RG_NAME}/providers/Microsoft.OperationalInsights/workspaces/nginx-aks-logs" \
             2>&1 | grep -v "already managed\|No changes" || true
 
           terraform import \
-            -var="location=${{ vars.AZURE_LOCATION }}" \
             azurerm_kubernetes_cluster.main \
             "/subscriptions/${SUB_ID}/resourceGroups/${RG_NAME}/providers/Microsoft.ContainerService/managedClusters/${CLUSTER}" \
             2>&1 | grep -v "already managed\|No changes" || true
@@ -322,7 +318,6 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           terraform plan \
-            -var="location=${{ vars.AZURE_LOCATION }}" \
             -out=tfplan
 
       - name: Upload tfplan artifact
