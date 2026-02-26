@@ -376,6 +376,14 @@ jobs:
              sudo chmod 0644   /opt/app_protect/config/cinex.json && \
              rm -f /tmp/cinex-policy.json"
 
+      - name: Clear apt locks (safe on re-run)
+        run: |
+          ssh ubuntu@${{ needs.terraform.outputs.public_ip }} 'bash -s' <<'EOF'
+          set -euo pipefail
+          sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock || true
+          sudo dpkg --configure -a || true
+          EOF
+
       - name: Install NGINX Plus + NAP v5 + Agent 3.x
         run: |
           set -euo pipefail
