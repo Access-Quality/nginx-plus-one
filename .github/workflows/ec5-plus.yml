@@ -103,12 +103,7 @@ jobs:
 
           policy_object_id=""
           if [[ -f "$existing_json" ]]; then
-            policy_object_id="$(python3 -c '
-import json,sys
-data=json.load(open(sys.argv[1],"r",encoding="utf-8"))
-items=data.get("items") or []
-print(next((i.get("object_id","") for i in items if i.get("name")=="cinex"), ""))
-' "$existing_json" 2>/dev/null || true)"
+            policy_object_id="$(python3 -c 'import json,sys; data=json.load(open(sys.argv[1],"r",encoding="utf-8")); items=data.get("items") or []; print(next((i.get("object_id","") for i in items if i.get("name")=="cinex"), ""))' "$existing_json" 2>/dev/null || true)"
           fi
 
           policy_b64="$(base64 < cinex-policy.json | tr -d '\n')"
