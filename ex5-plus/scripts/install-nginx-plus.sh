@@ -101,14 +101,16 @@ EOF
 
 sudo apt-get update -qq
 
-# Remove the single-container app-protect package if it was previously installed
-# (e.g. on a re-run after a prior failed attempt).  app-protect and
-# app-protect-module-plus conflict: the former bundles the local compiler which
-# must NOT be present in the Hybrid deployment.
-if dpkg -l app-protect 2>/dev/null | grep -q '^ii'; then
-  echo "Removing conflicting app-protect package before hybrid install..." >&2
-  sudo apt-get remove -y app-protect || true
-fi
+# Remove any single-container NAP packages left from prior runs.
+# app-protect-engine (installed as a dependency of app-protect) owns files that
+# conflict with app-protect-module-plus (e.g. /opt/app_protect/bin/apreload).
+# Purge all of them before installing the Hybrid package set.
+for pkg in app-protect app-protect-engine app-protect-plus nginx-plus-module-appprotect; do
+  if dpkg -l "$pkg" 2>/dev/null | grep -q '^ii'; then
+    echo "Purging conflicting package: $pkg" >&2
+    sudo apt-get purge -y "$pkg" || true
+  fi
+done
 
 # Install nginx-plus + the HYBRID module package (app-protect-module-plus).
 # IMPORTANT: For the Hybrid deployment (NGINX on host + waf-enforcer/waf-config-mgr
