@@ -119,29 +119,31 @@ EOF
 
 # ── NAP v5 runtime directories (UID/GID 101 = nginx inside containers) ────────
 sudo mkdir -p /opt/app_protect/config /opt/app_protect/bd_config
-sudo chown -R 101:101 /opt/app_protect
+sudo mkdir -p /etc/app_protect/conf
+sudo chown -R 101:101 /opt/app_protect /etc/app_protect
 
-# ── Login to NGINX private registry using JWT ────────────────────────────────
-# Read directly from the license file already placed on disk to avoid any
-# shell escaping / whitespace corruption when passing via env variable over SSH.
-sudo cat /etc/nginx/license.jwt | tr -d '\n\r\t ' \
-  | sudo docker login private-registry.nginx.com -u oauth2accesstoken --password-stdin
+# ── Configure Docker for NGINX private registry (TLS client certificate) ──────
+# Per official docs: https://docs.nginx.com/waf/install/docker/#configure-docker-for-the-f5-container-registry
+# Registry authentication uses mTLS (nginx-repo.crt / nginx-repo.key), NOT JWT.
+sudo mkdir -p /etc/docker/certs.d/private-registry.nginx.com
+sudo cp /etc/ssl/nginx/nginx-repo.crt /etc/docker/certs.d/private-registry.nginx.com/client.cert
+sudo cp /etc/ssl/nginx/nginx-repo.key /etc/docker/certs.d/private-registry.nginx.com/client.key
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
-# Pin to the tag that ships bundled with NGINX Plus R36 (app-protect 36+5.x).
-# Using versioned tags avoids pulling a breaking change on re-runs.
+# Image path: private-registry.nginx.com/nap/<image>:<tag>
+# See: https://docs.nginx.com/waf/install/docker/#download-docker-images
 NAP_IMAGE_TAG="5.9.0"
 
-sudo docker pull "private-registry.nginx.com/nginx-app-protect/waf-enforcer:${NAP_IMAGE_TAG}"
-sudo docker pull "private-registry.nginx.com/nginx-app-protect/waf-config-mgr:${NAP_IMAGE_TAG}"
+sudo docker pull "private-registry.nginx.com/nap/waf-enforcer:${NAP_IMAGE_TAG}"
+sudo docker pull "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}"
 
 # Tag locally for docker-compose simplicity (matches docker-compose.yaml image names)
 sudo docker tag \
-  "private-registry.nginx.com/nginx-app-protect/waf-enforcer:${NAP_IMAGE_TAG}" \
+  "private-registry.nginx.com/nap/waf-enforcer:${NAP_IMAGE_TAG}" \
   nplus-v5-waf-enforcer:latest
 
 sudo docker tag \
-  "private-registry.nginx.com/nginx-app-protect/waf-config-mgr:${NAP_IMAGE_TAG}" \
+  "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}" \
   nplus-v5-waf-config-mgr:latest
 
 # ── Deploy WAF containers via docker-compose ──────────────────────────────────
