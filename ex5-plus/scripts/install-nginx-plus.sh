@@ -149,12 +149,32 @@ sudo cp /etc/ssl/nginx/nginx-repo.crt /etc/docker/certs.d/private-registry.nginx
 sudo cp /etc/ssl/nginx/nginx-repo.key /etc/docker/certs.d/private-registry.nginx.com/client.key
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
-# Image path: private-registry.nginx.com/nap/<image>:<tag>
-# See: https://docs.nginx.com/waf/install/docker/#download-docker-images
-NAP_IMAGE_TAG="5.9.0"
+# Derive the image tag from the installed app-protect apt package so the
+# container images always match the NGINX module version.  If the package
+# version is not detectable (e.g. on a re-run where apt is already complete)
+# fall back to the known-good version for NGINX Plus R36.
+NAP_IMAGE_TAG="$(dpkg -l app-protect 2>/dev/null \
+  | awk '/^ii/{print $3}' \
+  | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' \
+  | head -n1)"
+NAP_IMAGE_TAG="${NAP_IMAGE_TAG:-5.11.2}"
+echo "Using NAP image tag: ${NAP_IMAGE_TAG}"
 
 sudo docker pull "private-registry.nginx.com/nap/waf-enforcer:${NAP_IMAGE_TAG}"
 sudo docker pull "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}"
+
+# ── Extract config_set_compiler from waf-config-mgr image to host ─────────────
+# The NGINX NAP v5 module (ngx_http_app_protect_module.so) requires
+# /opt/app_protect/bin/config_set_compiler on the HOST filesystem to compile
+# policy configs at startup.  In the Hybrid deployment this binary lives
+# inside the waf-config-mgr image and must be extracted to the host.
+sudo mkdir -p /opt/app_protect/bin
+TMPCONTAINER="$(sudo docker create "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}")"
+sudo docker cp "${TMPCONTAINER}:/opt/app_protect/bin/." /opt/app_protect/bin/
+sudo docker rm "${TMPCONTAINER}"
+sudo chmod +x /opt/app_protect/bin/*
+echo "Extracted NAP compiler binaries to /opt/app_protect/bin/"
+ls -lh /opt/app_protect/bin/
 
 # Tag locally for docker-compose simplicity (matches docker-compose.yaml image names)
 sudo docker tag \
