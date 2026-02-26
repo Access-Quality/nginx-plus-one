@@ -18,7 +18,7 @@ fi
 # ── System dependencies ───────────────────────────────────────────────────────
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
-  apt-transport-https ca-certificates curl gnupg lsb-release wget
+  apt-transport-https ca-certificates curl gnupg lsb-release wget netcat-openbsd
 
 codename="$(lsb_release -cs)"
 
@@ -100,6 +100,25 @@ sudo apt-get update -qq
 # Pin to R36 explicitly; app-protect version is bundled with R36.
 sudo apt-get install -y "nginx-plus=36*" app-protect
 
+# ── Ensure default logging profile exists ─────────────────────────────────────
+# The app-protect package should install /etc/app_protect/conf/log_all.json.
+# Create a minimal fallback if it's absent so nginx -t does not fail.
+sudo mkdir -p /etc/app_protect/conf
+if [[ ! -f /etc/app_protect/conf/log_all.json ]]; then
+  echo "log_all.json not found after package install — creating minimal fallback" >&2
+  sudo tee /etc/app_protect/conf/log_all.json >/dev/null <<'EOF'
+{
+    "filter": {
+        "request_type": "all"
+    },
+    "content": {
+        "format": "default",
+        "max_request_size": "any",
+        "max_message_size": "5k"
+    }
+}
+EOF
+fi
 # ── Load NAP module in nginx.conf ─────────────────────────────────────────────
 if ! sudo grep -qF 'load_module modules/ngx_http_app_protect_module.so;' /etc/nginx/nginx.conf; then
   sudo sed -i '1iload_module modules/ngx_http_app_protect_module.so;' /etc/nginx/nginx.conf
@@ -151,26 +170,34 @@ sudo mkdir -p /opt/nap-v5
 sudo cp /tmp/docker-compose.yaml /opt/nap-v5/docker-compose.yaml
 sudo docker compose -f /opt/nap-v5/docker-compose.yaml up -d
 
-# ── Wait for waf-config-mgr to compile the cinex policy bundle ────────────────
-echo "Waiting for cinex policy bundle to be compiled..."
+# ── Wait for waf-enforcer gRPC port to be ready ───────────────────────────────
+# waf-enforcer must be listening on port 50000 before NGINX starts.
+# NGINX's NAP module connects to it on startup to send the policy JSON;
+# waf-config-mgr then compiles the bundle asynchronously.
+echo "Waiting for waf-enforcer to be ready on port 50000..."
 for i in $(seq 1 30); do
-  if sudo test -f /opt/app_protect/bd_config/cinex.tgz; then
-    echo "Policy bundle ready: /opt/app_protect/bd_config/cinex.tgz"
+  if sudo docker inspect --format '{{.State.Running}}' waf-enforcer 2>/dev/null | grep -q true \
+     && nc -z 127.0.0.1 50000 2>/dev/null; then
+    echo "waf-enforcer is up (attempt $i)"
     break
   fi
-  echo "  attempt $i/30 — bundle not ready yet, sleeping 5s..."
+  echo "  attempt $i/30 — not ready yet, sleeping 5s..."
   sleep 5
 done
 
-if ! sudo test -f /opt/app_protect/bd_config/cinex.tgz; then
-  echo "ERROR: cinex.tgz was not produced by waf-config-mgr after 150s" >&2
+if ! nc -z 127.0.0.1 50000 2>/dev/null; then
+  echo "ERROR: waf-enforcer not listening on port 50000 after 150s" >&2
   sudo docker compose -f /opt/nap-v5/docker-compose.yaml logs >&2
   exit 1
 fi
 
 # ── Start NGINX Plus ──────────────────────────────────────────────────────────
+# NGINX connects to waf-enforcer, sends the policy JSON path, and waf-config-mgr
+# compiles the policy bundle in the background. Worker processes start serving
+# once the policy is fully compiled by the enforcer.
 sudo nginx -t
 sudo systemctl enable --now nginx
+# Reload to trigger policy push to waf-enforcer now that workers are up
 sudo systemctl reload nginx
 
 # ── NGINX Agent v3.7.0 ───────────────────────────────────────────────────────

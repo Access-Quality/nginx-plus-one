@@ -17,6 +17,14 @@ services:
       - "50000:50000"
     volumes:
       - /opt/app_protect/bd_config:/opt/app_protect/bd_config
+    # SYS_PTRACE is required for the tmstat shared-memory segment used for
+    # internal performance counters. Without it the log line
+    # "Unable to create tmstat segment" appears and the enforcer may not
+    # fully initialise its statistics subsystem.
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
     networks:
       - waf_network
 
