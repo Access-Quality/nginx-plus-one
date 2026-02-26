@@ -234,14 +234,35 @@ if ! nc -z 127.0.0.1 50000 2>/dev/null; then
   exit 1
 fi
 
+# ── Wait for waf-config-mgr to compile the policy bundle ────────────────────
+# waf-config-mgr watches /opt/app_protect/config/ and writes compiled bundles to
+# /opt/app_protect/bd_config/.  NGINX's NAP module expects the bundle to already
+# be present when it starts (it will request it from waf-enforcer, but compilation
+# must be done first).  Waiting here avoids the 45-second "config_set_id not found"
+# timeout that fires when nginx -t or nginx startup races waf-config-mgr.
+echo "Waiting for waf-config-mgr to compile policy bundle into bd_config..."
+for i in $(seq 1 60); do
+  if sudo ls /opt/app_protect/bd_config/ 2>/dev/null | grep -q '.'; then
+    echo "Policy bundle found in bd_config (attempt $i)"
+    break
+  fi
+  echo "  attempt $i/60 — bd_config empty, sleeping 5s..."
+  sleep 5
+done
+
+if ! sudo ls /opt/app_protect/bd_config/ 2>/dev/null | grep -q '.'; then
+  echo "ERROR: waf-config-mgr did not produce a policy bundle after 300s" >&2
+  sudo docker compose -f /opt/nap-v5/docker-compose.yaml logs >&2
+  exit 1
+fi
+
 # ── Start NGINX Plus ──────────────────────────────────────────────────────────
-# NGINX connects to waf-enforcer, sends the policy JSON path, and waf-config-mgr
-# compiles the policy bundle in the background. Worker processes start serving
-# once the policy is fully compiled by the enforcer.
-sudo nginx -t
+# Do NOT run 'nginx -t' here: the config test connects to waf-enforcer and waits
+# up to 45 s for the policy bundle.  If compilation is still in progress the test
+# fails with "config_set_id not found within 45 seconds" even though everything
+# is healthy.  The bd_config readiness check above ensures compilation is done
+# before nginx touches the enforcer.
 sudo systemctl enable --now nginx
-# Reload to trigger policy push to waf-enforcer now that workers are up
-sudo systemctl reload nginx
 
 # ── NGINX Agent v3.7.0 ───────────────────────────────────────────────────────
 # v3.7.0 (2026-02-03): latest 3.x release; adds Alpine 3.23, OTel and AWS Fargate fixes.
