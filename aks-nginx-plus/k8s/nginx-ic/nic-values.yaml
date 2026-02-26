@@ -1,0 +1,74 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Helm values — NGINX Plus Ingress Controller (AKS)
+# Chart: oci://ghcr.io/nginx/charts/nginx-ingress
+# ──────────────────────────────────────────────────────────────────────────────
+# Image repository + tag are injected via --set at deploy time (GitHub Actions).
+# NGINX One connection is via nginxAgent.* (chart-native, no manual env vars).
+# Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
+# ──────────────────────────────────────────────────────────────────────────────
+
+controller:
+  # ── NGINX Plus license ──────────────────────────────────────────────────────
+  nginxplus: true
+
+  # NIC 4.0+ requires the JWT license referenced via mgmt.licenseTokenSecretName
+  # The secret must contain key 'license.jwt'.
+  # Ref: https://docs.nginx.com/nginx-ingress-controller/installation/upgrade-version/#upgrade-from-3x-to-4x
+  mgmt:
+    licenseTokenSecretName: nginx-license
+
+  # ── Image (repo + tag overridden in workflow via --set) ─────────────────────
+  image:
+    repository: ghcr.io/ocpdata/nginx-nic # overridden with --set
+    tag: "latest"                          # overridden with --set
+    pullPolicy: Always
+
+  # ── Pull secret for GHCR ────────────────────────────────────────────────────
+  serviceAccount:
+    imagePullSecretName: ghcr-secret
+
+  # ── NGINX App Protect WAF ───────────────────────────────────────────────────
+  appprotect:
+    enable: true
+
+  # Keep the same IngressClass name so existing Ingress resources work unchanged
+  ingressClass:
+    name: nginx
+    setAsDefaultIngress: true
+
+  # ── Service (Azure Standard LB, internet-facing) ────────────────────────────
+  service:
+    type: LoadBalancer
+    annotations:
+      # Azure CCM picks up the health probe path from the readyStatus port (8081)
+      service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /nginx-ready
+      # Force an internet-facing public IP (default for Standard LB, explicit here)
+      service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+
+  # ── NGINX global config tweaks ──────────────────────────────────────────────
+  config:
+    entries:
+      worker-processes: "auto"
+      error-log: "stderr notice"
+
+  # ── Healthcheck / probes ─────────────────────────────────────────────────────
+  readyStatus:
+    enable: true
+    port: 8081
+
+  # ── Resource requests ────────────────────────────────────────────────────────
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# ── NGINX One Agent — connects NIC to NGINX One Console ──────────────────────
+# The secret 'nginx-one-token' must have key 'dataplane.key'.
+# Ref: https://docs.nginx.com/nginx-one-console/k8s/add-nic/
+nginxAgent:
+  enable: true
+  endpointHost: agent.connect.nginx.com
+  dataplaneKeySecretName: nginx-one-token
