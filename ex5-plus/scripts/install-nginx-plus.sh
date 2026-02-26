@@ -124,8 +124,9 @@ sudo mkdir -p /opt/app_protect/config /opt/app_protect/bd_config
 sudo chown -R 101:101 /opt/app_protect
 
 # ── Login to NGINX private registry using JWT ────────────────────────────────
+# Username must be lowercase 'oauth2accesstoken' (case-sensitive)
 echo "$LICENSE_JWT" \
-  | sudo docker login private-registry.nginx.com -u OAuth2AccessToken --password-stdin
+  | sudo docker login private-registry.nginx.com -u oauth2accesstoken --password-stdin
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
 # waf-enforcer: the inspection engine (replaces in-process NAP v4 broker)
