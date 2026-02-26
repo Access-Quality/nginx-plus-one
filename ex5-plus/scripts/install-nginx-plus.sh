@@ -125,7 +125,8 @@ sudo chown -R 101:101 /opt/app_protect
 
 # ── Login to NGINX private registry using JWT ────────────────────────────────
 # Username must be lowercase 'oauth2accesstoken' (case-sensitive)
-echo "$LICENSE_JWT" \
+# Strip all whitespace/newlines from the JWT before piping to avoid 401 errors
+printf '%s' "$LICENSE_JWT" | tr -d '\n\r\t ' \
   | sudo docker login private-registry.nginx.com -u oauth2accesstoken --password-stdin
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
