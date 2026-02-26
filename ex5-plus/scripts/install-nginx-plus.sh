@@ -149,15 +149,39 @@ sudo cp /etc/ssl/nginx/nginx-repo.crt /etc/docker/certs.d/private-registry.nginx
 sudo cp /etc/ssl/nginx/nginx-repo.key /etc/docker/certs.d/private-registry.nginx.com/client.key
 
 # ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
-# Derive the image tag from the installed app-protect apt package so the
-# container images always match the NGINX module version.  If the package
-# version is not detectable (e.g. on a re-run where apt is already complete)
-# fall back to the known-good version for NGINX Plus R36.
-NAP_IMAGE_TAG="$(dpkg -l app-protect 2>/dev/null \
+# Derive the NAP container image tag from the installed app-protect package.
+#
+# apt package version format: NGINX_PLUS_REL+COMPONENT_VER-PKG_REV~CODENAME
+#   e.g.  36+5.575.2-1~jammy
+#
+# NAP image tag format: RELEASE_MAJOR.RELEASE_MINOR.PATCH
+#   e.g.  5.11.2
+#
+# Mapping (from changelog):  component 5.575.X  →  image tag 5.11.X
+#   Extract the part between '+' and '-', then replace 575 → 11.
+# The || true on every pipeline step prevents grep/awk non-matches from
+# killing the script via set -euo pipefail.
+_apt_comp="$(dpkg -l app-protect 2>/dev/null \
   | awk '/^ii/{print $3}' \
-  | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' \
-  | head -n1)"
-NAP_IMAGE_TAG="${NAP_IMAGE_TAG:-5.11.2}"
+  | grep -oP '(?<=\+)\d+\.\d+\.\d+(?=-)' \
+  || true)"
+# _apt_comp is e.g. "5.575.2"; map NNN → minor release number via changelog
+_nap_patch="${_apt_comp##*.}"            # last field: 2
+_nap_series="$(echo "${_apt_comp}" | grep -oP '^\d+\.\K\d+(?=\.\d)' || true)"
+# _nap_series is e.g. "575"; map to release minor (575→11, 576→12, …)
+# Build a static map: known component series for NGINX Plus R36 releases.
+case "${_nap_series}" in
+  575) _nap_minor=11 ;;
+  576) _nap_minor=12 ;;
+  *)   _nap_minor=""  ;;
+esac
+if [[ -n "${_nap_minor}" && -n "${_nap_patch}" ]]; then
+  NAP_IMAGE_TAG="5.${_nap_minor}.${_nap_patch}"
+else
+  # Fallback: latest known-good tag for NGINX Plus R36 / Ubuntu 22.04 jammy
+  NAP_IMAGE_TAG="5.11.2"
+  echo "WARNING: could not derive NAP image tag from apt version '${_apt_comp}'; using fallback ${NAP_IMAGE_TAG}" >&2
+fi
 echo "Using NAP image tag: ${NAP_IMAGE_TAG}"
 
 sudo docker pull "private-registry.nginx.com/nap/waf-enforcer:${NAP_IMAGE_TAG}"
