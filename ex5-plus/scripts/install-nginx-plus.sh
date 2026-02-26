@@ -160,8 +160,22 @@ server {
 EOF
 
 # ── NAP v5 runtime directories (UID/GID 101 = nginx inside containers) ────────
+# Note: these are created AFTER any conflicting package purges above, because
+# `apt purge app-protect-engine` removes /opt/app_protect/ entirely.
 sudo mkdir -p /opt/app_protect/config /opt/app_protect/bd_config
 sudo mkdir -p /etc/app_protect/conf
+
+# Place the WAF policy file (staged to /tmp by the workflow before the install
+# script ran — doing it here ensures it survives any package purge above).
+if [[ -f /tmp/cinex-policy.json ]]; then
+  sudo cp /tmp/cinex-policy.json /opt/app_protect/config/cinex.json
+  sudo chown 101:101 /opt/app_protect/config/cinex.json
+  sudo chmod 0644   /opt/app_protect/config/cinex.json
+  rm -f /tmp/cinex-policy.json
+else
+  echo "WARNING: /tmp/cinex-policy.json not found; /opt/app_protect/config/cinex.json not created" >&2
+fi
+
 sudo chown -R 101:101 /opt/app_protect /etc/app_protect
 
 # ── Configure Docker for NGINX private registry (TLS client certificate) ──────
