@@ -97,12 +97,29 @@ EOF
 
 sudo apt-get update -qq
 
-# Pin to R36 explicitly; app-protect version is bundled with R36.
-sudo apt-get install -y "nginx-plus=36*" app-protect
+# Remove the single-container app-protect package if it was previously installed
+# (e.g. on a re-run after a prior failed attempt).  app-protect and
+# app-protect-module-plus conflict: the former bundles the local compiler which
+# must NOT be present in the Hybrid deployment.
+if dpkg -l app-protect 2>/dev/null | grep -q '^ii'; then
+  echo "Removing conflicting app-protect package before hybrid install..." >&2
+  sudo apt-get remove -y app-protect || true
+fi
+
+# Install nginx-plus + the HYBRID module package (app-protect-module-plus).
+# IMPORTANT: For the Hybrid deployment (NGINX on host + waf-enforcer/waf-config-mgr
+# as Docker containers) the correct package is app-protect-module-plus, NOT
+# app-protect.  The difference:
+#   app-protect           = single-container package; bundles nginx-plus + module
+#                           + local config_set_compiler in one image.
+#   app-protect-module-plus = module only; no local compiler; policy compilation
+#                           is delegated to the waf-config-mgr container.
+# See: https://docs.nginx.com/waf/install/docker/#hybrid-configuration
+sudo apt-get install -y "nginx-plus=36*" "app-protect-module-plus=36*"
 
 # ── Ensure default logging profile exists ─────────────────────────────────────
-# The app-protect package should install /etc/app_protect/conf/log_all.json.
-# Create a minimal fallback if it's absent so nginx -t does not fail.
+# app-protect-module-plus installs /etc/app_protect/conf/log_all.json.
+# Create a minimal fallback if it is absent so nginx -t does not fail.
 sudo mkdir -p /etc/app_protect/conf
 if [[ ! -f /etc/app_protect/conf/log_all.json ]]; then
   echo "log_all.json not found after package install — creating minimal fallback" >&2
@@ -148,28 +165,18 @@ sudo mkdir -p /etc/docker/certs.d/private-registry.nginx.com
 sudo cp /etc/ssl/nginx/nginx-repo.crt /etc/docker/certs.d/private-registry.nginx.com/client.cert
 sudo cp /etc/ssl/nginx/nginx-repo.key /etc/docker/certs.d/private-registry.nginx.com/client.key
 
-# ── Pull WAF v5 Docker images ─────────────────────────────────────────────────
-# Derive the NAP container image tag from the installed app-protect package.
-#
-# apt package version format: NGINX_PLUS_REL+COMPONENT_VER-PKG_REV~CODENAME
+# ── Derive NAP container image tag from installed module package ───────────────
+# apt package version: NGINX_PLUS_REL+COMPONENT_VER-PKG_REV~CODENAME
 #   e.g.  36+5.575.2-1~jammy
-#
-# NAP image tag format: RELEASE_MAJOR.RELEASE_MINOR.PATCH
-#   e.g.  5.11.2
-#
-# Mapping (from changelog):  component 5.575.X  →  image tag 5.11.X
-#   Extract the part between '+' and '-', then replace 575 → 11.
-# The || true on every pipeline step prevents grep/awk non-matches from
-# killing the script via set -euo pipefail.
-_apt_comp="$(dpkg -l app-protect 2>/dev/null \
+# Image tag: RELEASE_MAJOR.RELEASE_MINOR.PATCH  e.g.  5.11.2
+# Mapping (changelog): component series 575 → release minor 11
+# || true on every step prevents pipefail from triggering on grep no-match.
+_apt_comp="$(dpkg -l app-protect-module-plus 2>/dev/null \
   | awk '/^ii/{print $3}' \
   | grep -oP '(?<=\+)\d+\.\d+\.\d+(?=-)' \
   || true)"
-# _apt_comp is e.g. "5.575.2"; map NNN → minor release number via changelog
-_nap_patch="${_apt_comp##*.}"            # last field: 2
+_nap_patch="${_apt_comp##*.}"
 _nap_series="$(echo "${_apt_comp}" | grep -oP '^\d+\.\K\d+(?=\.\d)' || true)"
-# _nap_series is e.g. "575"; map to release minor (575→11, 576→12, …)
-# Build a static map: known component series for NGINX Plus R36 releases.
 case "${_nap_series}" in
   575) _nap_minor=11 ;;
   576) _nap_minor=12 ;;
@@ -178,27 +185,13 @@ esac
 if [[ -n "${_nap_minor}" && -n "${_nap_patch}" ]]; then
   NAP_IMAGE_TAG="5.${_nap_minor}.${_nap_patch}"
 else
-  # Fallback: latest known-good tag for NGINX Plus R36 / Ubuntu 22.04 jammy
   NAP_IMAGE_TAG="5.11.2"
-  echo "WARNING: could not derive NAP image tag from apt version '${_apt_comp}'; using fallback ${NAP_IMAGE_TAG}" >&2
+  echo "WARNING: could not derive NAP image tag from '${_apt_comp}'; using fallback ${NAP_IMAGE_TAG}" >&2
 fi
 echo "Using NAP image tag: ${NAP_IMAGE_TAG}"
 
 sudo docker pull "private-registry.nginx.com/nap/waf-enforcer:${NAP_IMAGE_TAG}"
 sudo docker pull "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}"
-
-# ── Extract config_set_compiler from waf-config-mgr image to host ─────────────
-# The NGINX NAP v5 module (ngx_http_app_protect_module.so) requires
-# /opt/app_protect/bin/config_set_compiler on the HOST filesystem to compile
-# policy configs at startup.  In the Hybrid deployment this binary lives
-# inside the waf-config-mgr image and must be extracted to the host.
-sudo mkdir -p /opt/app_protect/bin
-TMPCONTAINER="$(sudo docker create "private-registry.nginx.com/nap/waf-config-mgr:${NAP_IMAGE_TAG}")"
-sudo docker cp "${TMPCONTAINER}:/opt/app_protect/bin/." /opt/app_protect/bin/
-sudo docker rm "${TMPCONTAINER}"
-sudo chmod +x /opt/app_protect/bin/*
-echo "Extracted NAP compiler binaries to /opt/app_protect/bin/"
-ls -lh /opt/app_protect/bin/
 
 # Tag locally for docker-compose simplicity (matches docker-compose.yaml image names)
 sudo docker tag \
