@@ -68,7 +68,8 @@ APT::Sandbox::User "root";
 EOF
 
 # GPG keys
-curl -fsSL https://nginx.org/keys/nginx_signing.key \
+# NGINX Plus repos (pkgs.nginx.com) use the CS signing key, not the OSS nginx.org key.
+curl -fsSL https://cs.nginx.com/static/keys/nginx_signing.key \
   | sudo gpg --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
 
 curl -fsSL https://cs.nginx.com/static/keys/app-protect-security-updates.key \
@@ -79,9 +80,12 @@ echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
 https://pkgs.nginx.com/plus/ubuntu ${codename} nginx-plus" \
   | sudo tee /etc/apt/sources.list.d/nginx-plus.list
 
+# app-protect-x-plus: provides app-protect-module-plus (Hybrid / multi-container
+# deployment — module only, no local compiler).
+# Mirrors the OSS pattern: app-protect-x-oss → app-protect-module-oss.
 echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-https://pkgs.nginx.com/app-protect/ubuntu ${codename} nginx-plus" \
-  | sudo tee /etc/apt/sources.list.d/nginx-app-protect.list
+https://pkgs.nginx.com/app-protect-x-plus/ubuntu ${codename} nginx-plus" \
+  | sudo tee /etc/apt/sources.list.d/nginx-app-protect-x-plus.list
 
 echo "deb [signed-by=/usr/share/keyrings/app-protect-security-updates.gpg] \
 https://pkgs.nginx.com/app-protect-security-updates/ubuntu ${codename} nginx-plus" \
