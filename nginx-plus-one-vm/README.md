@@ -9,23 +9,9 @@ Este repositorio aprovisiona una instancia EC2 en AWS usando Terraform Cloud (ej
 - Credenciales de NGINX Plus (certificado/llave del repo) y licencia de NGINX Plus (jwt/llave).
 - Llave de data plane de NGINX One.
 
-## Secrets de GitHub
+### Secrets utilizados
 
-Configura estos secrets en tu repositorio:
-
-- `TFC_TOKEN`
-- `TFC_ORG`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION`
-- `NGINX_REPO_CRT`
-- `NGINX_REPO_KEY`
-- `LICENSE_JWT`
-- `LICENSE_KEY`
-- `DATA_PLANE_KEY`
-- `TMDB_API_KEY`
-
-### Contenido de los secrets
+Configura estos secrets en tu repositorio de GitHub y/o en los entornos donde despliegas la solución:
 
 - `TFC_TOKEN`: Token de acceso para autenticarte con Terraform Cloud.
 - `TFC_ORG`: Nombre de la organización en Terraform Cloud donde se gestionan los workspaces.
@@ -38,15 +24,26 @@ Configura estos secrets en tu repositorio:
 - `LICENSE_KEY`: Contenido del archivo `.key` de licencia de NGINX Plus (llave privada de la licencia).
 - `DATA_PLANE_KEY`: Llave de data plane de NGINX One, necesaria para registrar la instancia en NGINX One.
 - `TMDB_API_KEY`: API key de The Movie Database (TMDB), utilizada por la app Cine TMDB para consultar la base de datos de películas.
+- `OMBD_KEY`: API key de OMDb (Open Movie Database), utilizada por la app para consultar información de películas.
+- `XC_API_P12_FILE`: Archivo P12 para autenticación con API externa (usado en workflows de GitHub Actions).
+- `XC_API_URL`: URL de la API externa (usado en workflows de GitHub Actions).
+- `XC_P12_PASSWORD` / `VES_P12_PASSWORD`: Contraseña del archivo P12 para la API externa (usado en workflows de GitHub Actions).
+- `SSH_PUBLIC_KEY`: Llave pública SSH para acceso a instancias EC2 (usado en Terraform y workflows).
 
-## Workflows
+### Variables de entorno
+
+Además de los secrets, asegúrate de definir la variable de entorno:
+
+- `AWS_REGION`: Región de AWS donde se desplegarán los recursos (ejemplo: us-east-1). Es utilizada tanto como secret en los workflows como variable de entorno en los scripts y despliegues.
+
+#### Workflows
 
 - Deploy: [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml)
 - Destroy: [.github/workflows/nginx-plus-ec2-destroy.yml](.github/workflows/nginx-plus-ec2-destroy.yml)
 
 Ejecuta cada workflow manualmente desde GitHub Actions.
 
-## Terraform
+##### Terraform
 
 La configuración de Terraform está en [terraform/nginx-plus-ec2](terraform/nginx-plus-ec2).
 
@@ -55,7 +52,7 @@ La configuración de Terraform está en [terraform/nginx-plus-ec2](terraform/ngi
 - Crea un grupo de seguridad para SSH/HTTP/HTTPS.
 - Genera un par de llaves EC2 a partir de una llave pública SSH dinámica.
 
-## NGINX Plus + NGINX One
+###### NGINX Plus + NGINX One
 
 Los pasos de instalación y registro están en [scripts/install-nginx-plus.sh](scripts/install-nginx-plus.sh):
 
@@ -64,7 +61,7 @@ Los pasos de instalación y registro están en [scripts/install-nginx-plus.sh](s
 - Habilita la API de NGINX Plus en `127.0.0.1:8080`.
 - Instala e inicia el NGINX Agent con `DATA_PLANE_KEY`.
 
-## Instalación y aplicación del WAF
+###### Instalación y aplicación del WAF
 
 El WAF (Web Application Firewall) de NGINX Plus se instala y configura automáticamente durante la ejecución del workflow de despliegue, siguiendo estos pasos:
 
