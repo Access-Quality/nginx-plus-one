@@ -1,4 +1,4 @@
-name: nginx-plus-ec2-destroy
+name: Destroy Nginx Plus - WAF - Nginx One Agent en una VM en AWS
 
 on:
   workflow_dispatch:

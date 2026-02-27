@@ -1,4 +1,4 @@
-name: Deploy Nginx Plus - WAF - Nginx One en una VM en AWS
+name: Deploy Nginx Plus - WAF - Nginx One Agent en una VM en AWS
 
 on:
   workflow_dispatch:
