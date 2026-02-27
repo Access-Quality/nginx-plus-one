@@ -1,4 +1,4 @@
-name: nginx-plus-ec2
+name: Deploy Nginx Plus - WAF - Nginx One en una VM en AWS
 
 on:
   workflow_dispatch:
@@ -590,7 +590,15 @@ jobs:
             nginx-plus-one-vm/scripts/cine-tmdb.service
 
   deploy-cine:
-    needs: [terraform, setup-tfc, install, build-cine-omdb, build-cine-tmdb, create-waf-policy-cinex]
+    needs:
+      [
+        terraform,
+        setup-tfc,
+        install,
+        build-cine-omdb,
+        build-cine-tmdb,
+        create-waf-policy-cinex,
+      ]
     runs-on: ubuntu-latest
     env:
       OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
