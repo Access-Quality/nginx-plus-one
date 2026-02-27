@@ -10,6 +10,8 @@
 !/ex5-plus/**
 !/aks-nginx-plus/
 !/aks-nginx-plus/**
+!/azure/
+!/azure/**
 !/.gitignore
 !/README.md
 !/.github/
