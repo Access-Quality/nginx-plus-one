@@ -64,6 +64,22 @@ Los pasos de instalación y registro están en [scripts/install-nginx-plus.sh](s
 - Habilita la API de NGINX Plus en `127.0.0.1:8080`.
 - Instala e inicia el NGINX Agent con `DATA_PLANE_KEY`.
 
+## Instalación y aplicación del WAF
+
+El WAF (Web Application Firewall) de NGINX Plus se instala y configura automáticamente durante la ejecución del workflow de despliegue, siguiendo estos pasos:
+
+1. **Instalación de paquetes**: El script `install-nginx-plus.sh` instala los paquetes `nginx-plus` y `app-protect` desde los repositorios oficiales de NGINX configurados para Ubuntu. Esto incluye el módulo App Protect WAF.
+
+2. **Habilitación del módulo**: El script agrega la línea `load_module modules/ngx_http_app_protect_module.so;` al inicio de la configuración de NGINX (`/etc/nginx/nginx.conf`) si no existe, para habilitar el módulo WAF.
+
+3. **Copia de la política WAF**: El workflow sube el archivo de política WAF (`scripts/cinex-policy.json`) a la instancia y lo copia a las rutas `/etc/nginx/app_protect/conf/cinex.json` y `/etc/app_protect/conf/cinex.json`.
+
+4. **Configuración de NGINX**: El archivo de configuración de NGINX (`cine-nginx.conf`) hace referencia a la política WAF y activa el WAF en los servidores virtuales de las apps Cine, usando directivas como `app_protect_enable on;` y `app_protect_policy_file /etc/nginx/app_protect/conf/cinex.json;`.
+
+5. **Verificación**: El workflow valida que el módulo WAF esté cargado, que la política esté aplicada y que los logs de NGINX reflejen la protección.
+
+Si deseas usar una política diferente, reemplaza el archivo antes de ejecutar el workflow. El WAF protege las aplicaciones desplegadas filtrando y bloqueando solicitudes maliciosas según la política definida.
+
 ## Apps de Cine
 
 El workflow de deploy instala dos apps Node.js en la instancia cine:
