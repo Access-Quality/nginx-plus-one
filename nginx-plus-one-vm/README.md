@@ -27,12 +27,17 @@ Configura estos secrets en tu repositorio:
 
 ### Contenido de los secrets
 
-- `NGINX_REPO_CRT`: contenido de tu archivo `.crt` del repo de NGINX Plus.
-- `NGINX_REPO_KEY`: contenido de tu archivo `.key` del repo de NGINX Plus.
-- `LICENSE_JWT`: contenido de tu archivo `.jwt` de licencia de NGINX Plus.
-- `LICENSE_KEY`: contenido de tu archivo `.key` de licencia de NGINX Plus.
-- `DATA_PLANE_KEY`: llave de data plane de NGINX One.
-- `TMDB_API_KEY`: API key de The Movie Database (TMDB).
+- `TFC_TOKEN`: Token de acceso para autenticarte con Terraform Cloud.
+- `TFC_ORG`: Nombre de la organización en Terraform Cloud donde se gestionan los workspaces.
+- `AWS_ACCESS_KEY_ID`: ID de acceso de tu usuario de AWS con permisos para crear recursos.
+- `AWS_SECRET_ACCESS_KEY`: Llave secreta asociada a tu usuario de AWS.
+- `AWS_REGION`: Región de AWS donde se desplegarán los recursos (ejemplo: us-east-1).
+- `NGINX_REPO_CRT`: Contenido del archivo `.crt` del repositorio de NGINX Plus (certificado para acceder al repo de paquetes).
+- `NGINX_REPO_KEY`: Contenido del archivo `.key` del repositorio de NGINX Plus (llave privada para acceder al repo de paquetes).
+- `LICENSE_JWT`: Contenido del archivo `.jwt` de licencia de NGINX Plus (token de licencia).
+- `LICENSE_KEY`: Contenido del archivo `.key` de licencia de NGINX Plus (llave privada de la licencia).
+- `DATA_PLANE_KEY`: Llave de data plane de NGINX One, necesaria para registrar la instancia en NGINX One.
+- `TMDB_API_KEY`: API key de The Movie Database (TMDB), utilizada por la app Cine TMDB para consultar la base de datos de películas.
 
 ## Workflows
 
