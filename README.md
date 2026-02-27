@@ -5,10 +5,10 @@ Este directorio contiene varios proyectos relacionados con NGINX Plus, WAF y NGI
 - Cada subdirectorio representa un proyecto independiente.
 - Los workflows están en el directorio .github/workflows.
 
-- Deploy Nginx Plus - WAF - Nginx One Agent en una VM en AWS
+- **Deploy Nginx Plus - WAF - Nginx One Agent en una VM en AWS.**
 Implementa una instancia de Nginx Plus en una VM en AWS; también instala el Agente Nginx One y el WAF App Protect. Se puede monitorear tanto el tráfico y el uso de la instancia Nginx Plus en la consola Nginx One de F5 DCS
 
-- Deploy NGINX NIC/NAP-V5 in Azure
+- Deploy NGINX NIC/NAP-V5 in Azure.
 Implementa una instancia de Nginx Plus como Ingress Controller y el WAF App Protect en un cluster de Azure (AKS)
 
 ## Secrets de GitHub
