@@ -1,4 +1,4 @@
-name: " Deploy NGINX NIC/NAP-V5 in Azure"
+name: "Deploy NGINX NIC/NAP-V5 in Azure"
 on:
   push:
     branches: az-apply-nic-napv5
