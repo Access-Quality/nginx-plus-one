@@ -1,17 +1,17 @@
 # NGINX Plus EC2 + NGINX One (Terraform Cloud + GitHub Actions)
 
-This repository provisions an AWS EC2 instance with Terraform Cloud (local execution), installs NGINX Plus, and registers it with NGINX One using GitHub Actions.
+Este repositorio aprovisiona una instancia EC2 en AWS usando Terraform Cloud (ejecución local), instala NGINX Plus y la registra en NGINX One mediante GitHub Actions.
 
-## Requirements
+## Requisitos
 
-- Terraform Cloud organization and token.
-- AWS credentials with permissions to create EC2, security groups, and key pairs.
-- NGINX Plus credentials (repo cert/key) and NGINX Plus license (jwt/key).
-- NGINX One data plane key.
+- Organización y token de Terraform Cloud.
+- Credenciales de AWS con permisos para crear EC2, grupos de seguridad y pares de llaves.
+- Credenciales de NGINX Plus (certificado/llave del repo) y licencia de NGINX Plus (jwt/llave).
+- Llave de data plane de NGINX One.
 
-## GitHub Secrets
+## Secrets de GitHub
 
-Configure these secrets in your repository:
+Configura estos secrets en tu repositorio:
 
 - `TFC_TOKEN`
 - `TFC_ORG`
@@ -25,13 +25,13 @@ Configure these secrets in your repository:
 - `DATA_PLANE_KEY`
 - `TMDB_API_KEY`
 
-### Secret contents
+### Contenido de los secrets
 
-- `NGINX_REPO_CRT`: contents of your NGINX Plus repo `.crt` file.
-- `NGINX_REPO_KEY`: contents of your NGINX Plus repo `.key` file.
-- `LICENSE_JWT`: contents of your NGINX Plus license `.jwt` file.
-- `LICENSE_KEY`: contents of your NGINX Plus license `.key` file.
-- `DATA_PLANE_KEY`: NGINX One data plane key.
+- `NGINX_REPO_CRT`: contenido de tu archivo `.crt` del repo de NGINX Plus.
+- `NGINX_REPO_KEY`: contenido de tu archivo `.key` del repo de NGINX Plus.
+- `LICENSE_JWT`: contenido de tu archivo `.jwt` de licencia de NGINX Plus.
+- `LICENSE_KEY`: contenido de tu archivo `.key` de licencia de NGINX Plus.
+- `DATA_PLANE_KEY`: llave de data plane de NGINX One.
 - `TMDB_API_KEY`: API key de The Movie Database (TMDB).
 
 ## Workflows
@@ -39,57 +39,57 @@ Configure these secrets in your repository:
 - Deploy: [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml)
 - Destroy: [.github/workflows/nginx-plus-ec2-destroy.yml](.github/workflows/nginx-plus-ec2-destroy.yml)
 
-Run each workflow manually from GitHub Actions.
+Ejecuta cada workflow manualmente desde GitHub Actions.
 
 ## Terraform
 
-Terraform configuration lives in [terraform/nginx-plus-ec2](terraform/nginx-plus-ec2).
+La configuración de Terraform está en [terraform/nginx-plus-ec2](terraform/nginx-plus-ec2).
 
-- Creates an EC2 instance (Ubuntu 24.04).
-- Uses the default VPC and a default subnet.
-- Creates a security group for SSH/HTTP/HTTPS.
-- Generates an EC2 key pair from a dynamic SSH public key.
+- Crea una instancia EC2 (Ubuntu 24.04).
+- Usa la VPC y subred por defecto.
+- Crea un grupo de seguridad para SSH/HTTP/HTTPS.
+- Genera un par de llaves EC2 a partir de una llave pública SSH dinámica.
 
 ## NGINX Plus + NGINX One
 
-Installation and registration steps are in [scripts/install-nginx-plus.sh](scripts/install-nginx-plus.sh):
+Los pasos de instalación y registro están en [scripts/install-nginx-plus.sh](scripts/install-nginx-plus.sh):
 
-- Adds the NGINX Plus repo (jammy), installs NGINX Plus.
-- Configures license files at `/etc/nginx/license.jwt` and `/etc/nginx/license.key`.
-- Enables NGINX Plus API on `127.0.0.1:8080`.
-- Installs and starts the NGINX Agent with `DATA_PLANE_KEY`.
+- Agrega el repo de NGINX Plus (jammy) e instala NGINX Plus.
+- Configura los archivos de licencia en `/etc/nginx/license.jwt` y `/etc/nginx/license.key`.
+- Habilita la API de NGINX Plus en `127.0.0.1:8080`.
+- Instala e inicia el NGINX Agent con `DATA_PLANE_KEY`.
 
-## Cine apps
+## Apps de Cine
 
-The deploy workflow now installs two Node.js apps on the cine instance:
+El workflow de deploy instala dos apps Node.js en la instancia cine:
 
-- `Cine` (OMDb) on port `3000`.
-- `Cine TMDB` (The Movie Database) on port `3001`.
+- `Cine` (OMDb) en el puerto `3000`.
+- `Cine TMDB` (The Movie Database) en el puerto `3001`.
 
-Both are deployed by [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) and managed with systemd services.
+Ambas se despliegan mediante [.github/workflows/nginx-plus-ec2.yml](.github/workflows/nginx-plus-ec2.yml) y se gestionan con servicios systemd.
 
-The workflow builds each app in a separate job (`build-cine-omdb` and `build-cine-tmdb`) and then deploys both artifacts to the same cine VM in `deploy-cine`.
+El workflow construye cada app en un job separado (`build-cine-omdb` y `build-cine-tmdb`) y luego despliega ambos artefactos a la misma VM cine en `deploy-cine`.
 
-NGINX Plus routes them by hostname:
+NGINX Plus las enruta por hostname:
 
-- `cine.example.com` → Cine (OMDb, port 3000)
-- `cine-tmdb.example.com` → Cine TMDB (port 3001)
+- `cine.example.com` → Cine (OMDb, puerto 3000)
+- `cine-tmdb.example.com` → Cine TMDB (puerto 3001)
 
-## Notes
+## Notas
 
-- The SSH CIDR is set to the GitHub Actions runner public IP at runtime.
-- If you need a specific VPC or subnet, update the Terraform configuration.
+- El CIDR de SSH se establece al IP público del runner de GitHub Actions en tiempo de ejecución.
+- Si necesitas una VPC o subred específica, actualiza la configuración de Terraform.
 
-## Troubleshooting
+## Solución de problemas
 
-- NGINX Plus repo 400/403: verify `NGINX_REPO_CRT` and `NGINX_REPO_KEY` secrets, and that the repo key matches the cert.
-- NGINX service fails with license error: verify `LICENSE_JWT` and `LICENSE_KEY` secrets and that they belong to the same subscription.
-- Instance not showing in NGINX One: confirm `DATA_PLANE_KEY` is correct and allow a few minutes after agent start.
-- No metrics in NGINX One: confirm the API is enabled on `127.0.0.1:8080` and NGINX reloaded successfully.
+- Repo de NGINX Plus 400/403: verifica los secrets `NGINX_REPO_CRT` y `NGINX_REPO_KEY`, y que la llave coincida con el certificado.
+- El servicio de NGINX falla por error de licencia: verifica los secrets `LICENSE_JWT` y `LICENSE_KEY` y que pertenezcan a la misma suscripción.
+- La instancia no aparece en NGINX One: confirma que `DATA_PLANE_KEY` es correcto y espera unos minutos tras iniciar el agente.
+- No hay métricas en NGINX One: confirma que la API está habilitada en `127.0.0.1:8080` y que NGINX se recargó correctamente.
 
-## Verification
+## Verificación
 
-On the EC2 instance:
+En la instancia EC2:
 
 ```bash
 systemctl status nginx --no-pager
@@ -97,23 +97,23 @@ systemctl status nginx-agent --no-pager
 curl -I http://localhost
 ```
 
-## WAF blocking tests
+## Pruebas de bloqueo WAF
 
-Use the instance public IP plus an explicit `Host` header.
+Usa la IP pública de la instancia más un header `Host` explícito.
 
-Test 1 (should pass):
+Prueba 1 (debe pasar):
 
 ```bash
 curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/"
 ```
 
-Test 2 (should be blocked):
+Prueba 2 (debe ser bloqueada):
 
 ```bash
 curl -i -H "Host: cine.example.com" "http://<PUBLIC_IP>/?id=1%20OR%201%3D1--"
 ```
 
-If you don't see a block, check logs on the instance:
+Si no ves un bloqueo, revisa los logs en la instancia:
 
 ```bash
 sudo tail -n 200 /var/log/nginx/error.log | egrep -i "APP_PROTECT|app_protect|violation|blocked" || true
